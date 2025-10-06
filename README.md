@@ -1,46 +1,185 @@
-# Getting Started with Create React App
+# HeavyRent Admin Panel
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A comprehensive admin panel for managing the HeavyRent mobile application, built with React.js and Material-UI.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+### 🔐 Authentication
+- Admin login with role-based access control
+- Secure authentication using Firebase Auth
+- Protected routes and session management
 
-### `npm start`
+### 📊 Dashboard
+- Real-time statistics and analytics
+- Overview of ads, requests, users, and revenue
+- Quick action buttons for common tasks
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+### 📝 Ad Management
+- View all user-submitted ads
+- Approve/reject ads with admin pricing
+- Edit ad details and manage status
+- Bulk operations support
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+### 📋 Request Management
+- Manage rental requests from users
+- Assign requests to appropriate admins
+- Track request status and progress
+- Payment verification system
 
-### `npm test`
+### 💬 Chat System
+- Real-time communication with users
+- File sharing for payment receipts
+- Chat history and message management
+- Admin-user conversation tracking
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### 👥 User Management
+- View all registered users
+- User verification and blocking
+- User activity tracking
+- Profile management
 
-### `npm run build`
+## Tech Stack
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- **Frontend**: React.js with TypeScript
+- **UI Framework**: Material-UI (MUI)
+- **Backend**: Firebase (Firestore, Auth, Realtime Database)
+- **Routing**: React Router DOM
+- **Data Grid**: MUI X Data Grid
+- **Charts**: MUI X Charts
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Setup Instructions
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### 1. Prerequisites
+- Node.js (v16 or higher)
+- npm or yarn
+- Firebase project setup
 
-### `npm run eject`
+### 2. Installation
+```bash
+# Navigate to admin panel directory
+cd admin-panel
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+# Install dependencies
+npm install
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+# Start development server
+npm start
+```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+### 3. Firebase Configuration
+1. Copy your Firebase configuration from the mobile app
+2. Update `src/firebase.ts` with your Firebase config
+3. Ensure Firestore security rules allow admin access
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+### 4. Admin User Setup
+1. Create an admin user in Firebase Auth
+2. Add user document to Firestore with `role: 'admin'`
+3. Use admin credentials to login
 
-## Learn More
+## Project Structure
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```
+admin-panel/
+├── src/
+│   ├── components/
+│   │   ├── Layout.tsx
+│   │   └── ProtectedRoute.tsx
+│   ├── contexts/
+│   │   └── AuthContext.tsx
+│   ├── pages/
+│   │   ├── Login.tsx
+│   │   ├── Dashboard.tsx
+│   │   ├── AdManagement.tsx
+│   │   ├── RequestManagement.tsx
+│   │   ├── ChatSystem.tsx
+│   │   └── UserManagement.tsx
+│   ├── firebase.ts
+│   ├── App.tsx
+│   └── index.tsx
+├── package.json
+└── README.md
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Database Structure
+
+### Collections
+- `users/` - User profiles and admin accounts
+- `ads/` - Machinery advertisements
+- `rentalRequests/` - Rental requests from users
+- `chats/` - Chat conversations
+- `messages/` - Individual chat messages
+
+### Security Rules
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Admin access to all collections
+    match /{document=**} {
+      allow read, write: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+  }
+}
+```
+
+## Workflow
+
+### Ad Approval Process
+1. User submits ad → Status: "pending"
+2. Admin reviews ad → Sets admin price
+3. Admin approves → Status: "approved"
+4. Ad becomes visible to users
+
+### Rental Request Process
+1. User requests rental → Status: "pending"
+2. Admin assigns request → Status: "assigned"
+3. User makes payment → Uploads receipt
+4. Admin verifies payment → Status: "verified"
+5. Admin completes rental → Status: "completed"
+
+## Development
+
+### Available Scripts
+- `npm start` - Start development server
+- `npm build` - Build for production
+- `npm test` - Run tests
+- `npm eject` - Eject from Create React App
+
+### Environment Variables
+Create `.env` file for environment-specific configurations:
+```
+REACT_APP_FIREBASE_API_KEY=your_api_key
+REACT_APP_FIREBASE_AUTH_DOMAIN=your_domain
+REACT_APP_FIREBASE_PROJECT_ID=your_project_id
+```
+
+## Deployment
+
+### Build for Production
+```bash
+npm run build
+```
+
+### Deploy to Firebase Hosting
+```bash
+# Install Firebase CLI
+npm install -g firebase-tools
+
+# Login to Firebase
+firebase login
+
+# Initialize hosting
+firebase init hosting
+
+# Deploy
+firebase deploy
+```
+
+## Support
+
+For issues and questions, please contact the development team.
+
+## License
+
+This project is proprietary software for HeavyRent application.
