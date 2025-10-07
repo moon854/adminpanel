@@ -57,5 +57,5 @@ const firebaseConfig = {
 - Real-time updates across all platforms
 
 ## 🎉 Ready to Use!
-Your admin panel is now fully functional and ready to manage the HeavyRent mobile application!
+Your admin panel is now fully functional and ready to manage the Rent-To-Build mobile application!
 

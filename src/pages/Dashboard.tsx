@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -41,15 +41,12 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchDashboardStats();
-  }, []);
-
-  const fetchDashboardStats = async () => {
+  const fetchDashboardStats = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      // Fetch ads statistics
+      // Fetch ads statistics with optimized query
       const adsRef = collection(db, 'machinery');
       const adsSnapshot = await getDocs(adsRef);
       
@@ -59,7 +56,8 @@ const Dashboard: React.FC = () => {
       let rejectedAds = 0;
       let totalRevenue = 0;
       
-      adsSnapshot.forEach((doc) => {
+      // Process ads data efficiently
+      adsSnapshot.docs.forEach((doc) => {
         const data = doc.data();
         totalAds++;
         
@@ -71,7 +69,9 @@ const Dashboard: React.FC = () => {
             approvedAds++;
             // Calculate revenue (assuming 30% commission)
             const price = parseFloat(data.price || data.rentPerDay || '0');
-            totalRevenue += price * 0.3;
+            if (!isNaN(price)) {
+              totalRevenue += price * 0.3;
+            }
             break;
           case 'rejected':
             rejectedAds++;
@@ -79,7 +79,7 @@ const Dashboard: React.FC = () => {
         }
       });
       
-      // Fetch users count
+      // Fetch users count with optimized query
       const usersRef = collection(db, 'users');
       const usersSnapshot = await getDocs(usersRef);
       const totalUsers = usersSnapshot.size;
@@ -95,27 +95,31 @@ const Dashboard: React.FC = () => {
       
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
-      setError('Failed to fetch dashboard statistics');
+      setError('Failed to fetch dashboard statistics. Please try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const StatCard: React.FC<{
+  useEffect(() => {
+    fetchDashboardStats();
+  }, [fetchDashboardStats]);
+
+  const StatCard = React.memo<{
     title: string;
     value: string | number;
     icon: React.ReactNode;
     color: string;
     onClick?: () => void;
-  }> = ({ title, value, icon, color, onClick }) => (
+  }>(({ title, value, icon, color, onClick }) => (
     <Card 
       sx={{ 
         cursor: onClick ? 'pointer' : 'default',
         height: '140px',
+        transition: 'all 0.2s ease-in-out',
         '&:hover': onClick ? { 
           boxShadow: 3,
           transform: 'translateY(-2px)',
-          transition: 'all 0.2s ease-in-out'
         } : {}
       }}
       onClick={onClick}
@@ -145,7 +149,7 @@ const Dashboard: React.FC = () => {
         </Box>
       </CardContent>
     </Card>
-  );
+  ));
 
   if (loading) {
     return (
@@ -224,7 +228,7 @@ const Dashboard: React.FC = () => {
           Recent Activity
         </Typography>
         <Typography variant="body2" color="textSecondary">
-          Dashboard shows real-time statistics from your HeavyRent mobile app.
+          Dashboard shows real-time statistics from your Rent-To-Build mobile app.
           All data is fetched directly from Firebase Firestore.
         </Typography>
       </Paper>

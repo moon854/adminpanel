@@ -1,19 +1,21 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from './contexts/AuthContext';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import AdManagement from './pages/AdManagement';
-import ApprovedAds from './pages/ApprovedAds';
-import AllAds from './pages/AllAds';
-import RequestManagement from './pages/RequestManagement';
-import ChatSystem from './pages/ChatSystem';
-import UserManagement from './pages/UserManagement';
-import AdminNotifications from './pages/AdminNotifications';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
+
+// Lazy load components for better performance
+const Dashboard = React.lazy(() => import('./pages/Dashboard'));
+const AdManagement = React.lazy(() => import('./pages/AdManagement'));
+const ApprovedAds = React.lazy(() => import('./pages/ApprovedAds'));
+const AllAds = React.lazy(() => import('./pages/AllAds'));
+const RequestManagement = React.lazy(() => import('./pages/RequestManagement'));
+const ChatSystem = React.lazy(() => import('./pages/ChatSystem'));
+const UserManagement = React.lazy(() => import('./pages/UserManagement'));
+const AdminNotifications = React.lazy(() => import('./pages/AdminNotifications'));
 
 // Create Material-UI theme
 const theme = createTheme({
@@ -44,14 +46,46 @@ function App() {
               </ProtectedRoute>
             }>
                   <Route index element={<Navigate to="/dashboard" replace />} />
-                  <Route path="dashboard" element={<Dashboard />} />
-                  <Route path="all-ads" element={<AllAds />} />
-                  <Route path="ads" element={<AdManagement />} />
-                  <Route path="approved-ads" element={<ApprovedAds />} />
-                  <Route path="requests" element={<RequestManagement />} />
-                  <Route path="chat" element={<ChatSystem />} />
-                  <Route path="users" element={<UserManagement />} />
-                  <Route path="notifications" element={<AdminNotifications />} />
+                  <Route path="dashboard" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <Dashboard />
+                    </Suspense>
+                  } />
+                  <Route path="all-ads" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <AllAds />
+                    </Suspense>
+                  } />
+                  <Route path="ads" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <AdManagement />
+                    </Suspense>
+                  } />
+                  <Route path="approved-ads" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <ApprovedAds />
+                    </Suspense>
+                  } />
+                  <Route path="requests" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <RequestManagement />
+                    </Suspense>
+                  } />
+                  <Route path="chat" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <ChatSystem />
+                    </Suspense>
+                  } />
+                  <Route path="users" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <UserManagement />
+                    </Suspense>
+                  } />
+                  <Route path="notifications" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <AdminNotifications />
+                    </Suspense>
+                  } />
             </Route>
           </Routes>
         </Router>

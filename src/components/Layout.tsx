@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import {
   AppBar,
@@ -55,38 +55,38 @@ const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Fetch unread notification count
-  useEffect(() => {
-    const fetchUnreadCount = async () => {
-      try {
-        const notificationsRef = collection(db, 'adminNotifications');
-        const q = query(notificationsRef, where('status', '==', 'unread'));
-        const querySnapshot = await getDocs(q);
-        setUnreadCount(querySnapshot.size);
-      } catch (error) {
-        console.error('Error fetching unread count:', error);
-      }
-    };
-
-    fetchUnreadCount();
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchUnreadCount, 30000);
-    return () => clearInterval(interval);
+  // Fetch unread notification count with optimization
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const notificationsRef = collection(db, 'adminNotifications');
+      const q = query(notificationsRef, where('status', '==', 'unread'));
+      const querySnapshot = await getDocs(q);
+      setUnreadCount(querySnapshot.size);
+    } catch (error) {
+      console.error('Error fetching unread count:', error);
+    }
   }, []);
 
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
+  useEffect(() => {
+    fetchUnreadCount();
+    // Refresh every 60 seconds instead of 30 for better performance
+    const interval = setInterval(fetchUnreadCount, 60000);
+    return () => clearInterval(interval);
+  }, [fetchUnreadCount]);
 
-  const handleProfileMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+  const handleDrawerToggle = useCallback(() => {
+    setMobileOpen(prev => !prev);
+  }, []);
+
+  const handleProfileMenuOpen = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
-  };
+  }, []);
 
-  const handleProfileMenuClose = () => {
+  const handleProfileMenuClose = useCallback(() => {
     setAnchorEl(null);
-  };
+  }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await logout();
       navigate('/login');
@@ -94,13 +94,13 @@ const Layout: React.FC = () => {
       console.error('Logout error:', error);
     }
     handleProfileMenuClose();
-  };
+  }, [logout, navigate, handleProfileMenuClose]);
 
-  const drawer = (
+  const drawer = useMemo(() => (
     <div>
       <Toolbar>
         <Typography variant="h6" noWrap component="div" sx={{ color: '#47D6FF', fontWeight: 'bold' }}>
-          HeavyRent Admin
+          Rent-To-Build Admin
         </Typography>
       </Toolbar>
       <Divider />
@@ -138,7 +138,7 @@ const Layout: React.FC = () => {
         ))}
       </List>
     </div>
-  );
+  ), [location.pathname, navigate, unreadCount]);
 
   return (
     <Box sx={{ display: 'flex' }}>

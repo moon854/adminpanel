@@ -56,7 +56,7 @@ const Login: React.FC = () => {
           >
             <AdminPanelSettings sx={{ fontSize: 60, color: '#47D6FF', mb: 2 }} />
             <Typography component="h1" variant="h4" sx={{ mb: 2, color: '#47D6FF', fontWeight: 'bold' }}>
-              HeavyRent Admin
+              Rent-To-Build Admin
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
               Sign in to access the admin panel

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 HeavyRent Admin Panel Setup Script"
+echo "🚀 Rent-To-Build Admin Panel Setup Script"
 echo "====================================="
 
 # Check if Node.js is installed
