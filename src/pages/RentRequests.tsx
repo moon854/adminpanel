@@ -4,39 +4,30 @@ import {
   Typography,
   Paper,
   Button,
+  Chip,
+  Alert,
+  CircularProgress,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  Chip,
-  Alert,
-  CircularProgress,
   Grid,
+  Divider,
   Card,
-  CardContent,
-  CardMedia,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Divider
+  CardContent
 } from '@mui/material';
 import {
-  Assignment as AssignmentIcon,
-  Person as PersonIcon,
-  CalendarToday as CalendarIcon,
-  AttachMoney as MoneyIcon,
   CheckCircle as ApproveIcon,
   Cancel as RejectIcon,
   Visibility as ViewIcon,
+  Payment as PaymentIcon,
   LocalShipping as RentIcon
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridActionsCellItem } from '@mui/x-data-grid';
-import { collection, query, getDocs, doc, updateDoc, orderBy, where, onSnapshot, serverTimestamp, addDoc } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, orderBy, serverTimestamp, addDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 
-interface RentalRequest {
+interface RentRequest {
   id: string;
   userId: string;
   userName: string;
@@ -63,71 +54,37 @@ interface RentalRequest {
   remainingPayment: number;
   grandTotal: number;
   paymentProofUrl: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: string;
   requestedAt: any;
   approvedAt: any;
-  approvedBy?: string;
 }
 
-const RequestManagement: React.FC = () => {
-  const [requests, setRequests] = useState<RentalRequest[]>([]);
+const RentRequests: React.FC = () => {
+  const [requests, setRequests] = useState<RentRequest[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [selectedRequest, setSelectedRequest] = useState<RentalRequest | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<RentRequest | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [selectedAdmin, setSelectedAdmin] = useState('');
-  
-  // Real-time stats
-  const [stats, setStats] = useState({
-    total: 0,
-    pending: 0,
-    approved: 0,
-    rejected: 0
-  });
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchRequests();
-    
-    // Set up real-time listener for stats
-    const requestsRef = collection(db, 'rentRequests');
-    const unsubscribe = onSnapshot(requestsRef, (snapshot) => {
-      let total = 0;
-      let pending = 0;
-      let approved = 0;
-      let rejected = 0;
-
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        total++;
-        
-        switch (data.status) {
-          case 'pending': pending++; break;
-          case 'approved': approved++; break;
-          case 'rejected': rejected++; break;
-        }
-      });
-
-      setStats({ total, pending, approved, rejected });
-    });
-
-    return () => unsubscribe();
+    fetchRentRequests();
   }, []);
 
-  const fetchRequests = async () => {
+  const fetchRentRequests = async () => {
     try {
       setLoading(true);
       const requestsRef = collection(db, 'rentRequests');
       const q = query(requestsRef, orderBy('requestedAt', 'desc'));
       const querySnapshot = await getDocs(q);
       
-      const requestsData: RentalRequest[] = [];
+      const requestsData: RentRequest[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
         requestsData.push({
           id: doc.id,
           ...data
-        } as RentalRequest);
+        } as RentRequest);
       });
       
       setRequests(requestsData);
@@ -139,7 +96,7 @@ const RequestManagement: React.FC = () => {
     }
   };
 
-  const handleApproveRequest = async (request: RentalRequest) => {
+  const handleApproveRequest = async (request: RentRequest) => {
     try {
       setActionLoading(true);
 
@@ -150,7 +107,7 @@ const RequestManagement: React.FC = () => {
         approvedBy: 'admin'
       });
 
-      // Send publisher card to renter
+      // Send publisher card to renter (user) via chat
       const chatMessageToRenter = {
         chatId: `rent_approved_renter_${request.id}_${Date.now()}`,
         senderId: 'admin',
@@ -175,7 +132,7 @@ const RequestManagement: React.FC = () => {
 
       await addDoc(collection(db, 'chatMessages'), chatMessageToRenter);
 
-      // Send renter card to publisher
+      // Send renter card to publisher (machinery owner) via chat
       const chatMessageToPublisher = {
         chatId: `rent_approved_publisher_${request.id}_${Date.now()}`,
         senderId: 'admin',
@@ -269,7 +226,7 @@ const RequestManagement: React.FC = () => {
     }
   };
 
-  const handleViewRequest = (request: RentalRequest) => {
+  const handleViewDetails = (request: RentRequest) => {
     setSelectedRequest(request);
     setDialogOpen(true);
   };
@@ -314,7 +271,7 @@ const RequestManagement: React.FC = () => {
           <GridActionsCellItem
             icon={<ViewIcon />}
             label="View Details"
-            onClick={() => handleViewRequest(params.row)}
+            onClick={() => handleViewDetails(params.row)}
           />
         ];
 
@@ -344,16 +301,16 @@ const RequestManagement: React.FC = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
+      <Box display="flex" justifyContent="center" alignItems="center" height="100vh">
         <CircularProgress />
       </Box>
     );
   }
 
   return (
-    <Box>
-      <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 'bold', color: '#47D6FF' }}>
-        Request Management
+    <Box p={3}>
+      <Typography variant="h4" gutterBottom>
+        Rent Requests
       </Typography>
       
       {error && (
@@ -362,89 +319,16 @@ const RequestManagement: React.FC = () => {
         </Alert>
       )}
 
-      {/* Real-time Statistics Cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#47D6FF10', borderLeft: '4px solid #47D6FF', cursor: 'pointer' }}>
-            <CardContent sx={{ py: 2 }}>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="textSecondary" variant="body2" gutterBottom>
-                    Total Requests
-                  </Typography>
-                  <Typography variant="h3" component="div" sx={{ color: '#47D6FF', fontWeight: 'bold' }}>
-                    {stats.total}
-                  </Typography>
-                </Box>
-                <RentIcon sx={{ fontSize: 40, color: '#47D6FF' }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#FF980010', borderLeft: '4px solid #FF9800', cursor: 'pointer' }}>
-            <CardContent sx={{ py: 2 }}>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="textSecondary" variant="body2" gutterBottom>
-                    Pending
-                  </Typography>
-                  <Typography variant="h3" component="div" sx={{ color: '#FF9800', fontWeight: 'bold' }}>
-                    {stats.pending}
-                  </Typography>
-                </Box>
-                <AssignmentIcon sx={{ fontSize: 40, color: '#FF9800' }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#4CAF5010', borderLeft: '4px solid #4CAF50', cursor: 'pointer' }}>
-            <CardContent sx={{ py: 2 }}>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="textSecondary" variant="body2" gutterBottom>
-                    Approved
-                  </Typography>
-                  <Typography variant="h3" component="div" sx={{ color: '#4CAF50', fontWeight: 'bold' }}>
-                    {stats.approved}
-                  </Typography>
-                </Box>
-                <ApproveIcon sx={{ fontSize: 40, color: '#4CAF50' }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ backgroundColor: '#F4433610', borderLeft: '4px solid #F44336', cursor: 'pointer' }}>
-            <CardContent sx={{ py: 2 }}>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="textSecondary" variant="body2" gutterBottom>
-                    Rejected
-                  </Typography>
-                  <Typography variant="h3" component="div" sx={{ color: '#F44336', fontWeight: 'bold' }}>
-                    {stats.rejected}
-                  </Typography>
-                </Box>
-                <RejectIcon sx={{ fontSize: 40, color: '#F44336' }} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-
       <Paper sx={{ height: 600, width: '100%' }}>
         <DataGrid
           rows={requests}
           columns={columns}
-          pageSizeOptions={[5, 10, 25]}
           initialState={{
-            pagination: { paginationModel: { pageSize: 10 } },
+            pagination: {
+              paginationModel: { page: 0, pageSize: 10 },
+            },
           }}
+          pageSizeOptions={[10, 25, 50]}
           disableRowSelectionOnClick
         />
       </Paper>
@@ -597,5 +481,5 @@ const RequestManagement: React.FC = () => {
   );
 };
 
-export default RequestManagement;
+export default RentRequests;
 

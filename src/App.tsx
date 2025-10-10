@@ -12,6 +12,8 @@ const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const AdManagement = React.lazy(() => import('./pages/AdManagement'));
 const ApprovedAds = React.lazy(() => import('./pages/ApprovedAds'));
 const AllAds = React.lazy(() => import('./pages/AllAds'));
+const AdPublishers = React.lazy(() => import('./pages/AdPublishers'));
+const RentRequests = React.lazy(() => import('./pages/RentRequests'));
 const RequestManagement = React.lazy(() => import('./pages/RequestManagement'));
 const ChatSystem = React.lazy(() => import('./pages/ChatSystem'));
 const UserManagement = React.lazy(() => import('./pages/UserManagement'));
@@ -64,6 +66,16 @@ function App() {
                   <Route path="approved-ads" element={
                     <Suspense fallback={<div>Loading...</div>}>
                       <ApprovedAds />
+                    </Suspense>
+                  } />
+                  <Route path="ad-publishers" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <AdPublishers />
+                    </Suspense>
+                  } />
+                  <Route path="rent-requests" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <RentRequests />
                     </Suspense>
                   } />
                   <Route path="requests" element={

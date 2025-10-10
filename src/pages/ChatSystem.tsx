@@ -17,7 +17,8 @@ import {
   Card,
   CardContent,
   Chip,
-  CardMedia
+  CardMedia,
+  Badge
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -27,7 +28,7 @@ import {
 } from '@mui/icons-material';
 import { collection, query, getDocs, doc, updateDoc, addDoc, orderBy, where, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { notifyUserAdminReply } from '../helpers/chatNotifications';
+import { notifyUserAdminReply, markChatNotificationsAsRead, getUnreadGeneralSupportCount, getUnreadMachineryInquiriesCount } from '../helpers/chatNotifications';
 
 interface Chat {
   id: string;
@@ -77,10 +78,55 @@ const ChatSystem: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'general' | 'ad'>('general');
+  const [generalSupportCount, setGeneralSupportCount] = useState(0);
+  const [machineryInquiriesCount, setMachineryInquiriesCount] = useState(0);
 
   useEffect(() => {
     fetchChats();
+    fetchTabCounts();
+    
+    // Set up real-time listener for chat notifications
+    const chatNotificationsQuery = query(
+      collection(db, 'adminNotifications'),
+      where('type', '==', 'new_message')
+    );
+    
+    const unsubscribeChatNotifications = onSnapshot(chatNotificationsQuery, (snapshot) => {
+      let generalCount = 0;
+      let machineryCount = 0;
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.status === 'unread') {
+          if (data.machineryDetails) {
+            machineryCount++;
+          } else {
+            generalCount++;
+          }
+        }
+      });
+      
+      setGeneralSupportCount(generalCount);
+      setMachineryInquiriesCount(machineryCount);
+    });
+    
+    return () => {
+      unsubscribeChatNotifications();
+    };
   }, []);
+
+  const fetchTabCounts = async () => {
+    try {
+      const [generalCount, machineryCount] = await Promise.all([
+        getUnreadGeneralSupportCount(),
+        getUnreadMachineryInquiriesCount()
+      ]);
+      setGeneralSupportCount(generalCount);
+      setMachineryInquiriesCount(machineryCount);
+    } catch (error) {
+      console.error('Error fetching tab counts:', error);
+    }
+  };
 
   useEffect(() => {
     if (selectedChat) {
@@ -107,13 +153,28 @@ const ChatSystem: React.FC = () => {
         // Filter for general chats (no machinery details and not machinery-related chatId)
         if (!data.machineryDetails && !generalChatIds.has(data.chatId) && !data.chatId?.includes('machinery_')) {
           generalChatIds.add(data.chatId);
+          
+          // For admin-initiated chats, we need to extract the user ID from the chatId
+          let userId = data.senderId;
+          let userName = data.senderName;
+          
+          if (data.senderId === 'admin' && data.chatId.includes('admin_initiated_')) {
+            // Extract user ID from admin-initiated chat ID format: admin_initiated_{userId}_{timestamp}
+            const chatIdParts = data.chatId.split('_');
+            if (chatIdParts.length >= 3) {
+              userId = chatIdParts[2];
+              // We'll fetch the user name separately below
+            }
+          }
+          
           generalChatDataMap.set(data.chatId, {
             chatId: data.chatId,
-            userId: data.senderId,
-            userName: data.senderName,
+            userId: userId,
+            userName: userName,
             lastMessage: data.message,
             lastMessageTime: data.createdAt,
-            chatType: 'general'
+            chatType: 'general',
+            isAdminInitiated: data.senderId === 'admin'
           });
         }
       });
@@ -126,10 +187,16 @@ const ChatSystem: React.FC = () => {
         // Fetch user data
         const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', chatData.userId)));
         let userEmail = 'unknown@email.com';
+        let displayName = chatData.userName;
         
         if (!userDoc.empty) {
           const userData = userDoc.docs[0].data();
           userEmail = userData.email;
+          
+          // For admin-initiated chats, use the actual user's name
+          if (chatData.isAdminInitiated) {
+            displayName = `${userData.firstName} ${userData.lastName}`.trim();
+          }
         }
         
         console.log('Adding general chat:', chatId, chatData);
@@ -137,7 +204,7 @@ const ChatSystem: React.FC = () => {
           id: chatId,
           chatId: chatId,
           userId: chatData.userId,
-          userName: chatData.userName,
+          userName: displayName,
           userEmail,
           lastMessage: chatData.lastMessage || 'No messages yet',
           lastMessageTime: chatData.lastMessageTime,
@@ -227,6 +294,12 @@ const ChatSystem: React.FC = () => {
 
   const fetchMessages = async (chatId: string) => {
     try {
+      // Mark notifications as read for this chat
+      await markChatNotificationsAsRead(chatId);
+      
+      // Refresh tab counts after marking as read
+      fetchTabCounts();
+      
       // Simplified query to avoid index requirement
       const messagesQuery = query(
         collection(db, 'chatMessages'), 
@@ -347,7 +420,9 @@ const ChatSystem: React.FC = () => {
                     fontWeight: activeTab === 'general' ? 'bold' : 'normal'
                   }}
                 >
-                  General Support
+                  <Badge badgeContent={generalSupportCount} color="error" sx={{ mr: 1 }}>
+                    <span>General Support</span>
+                  </Badge>
                 </Button>
                 <Button
                   onClick={() => setActiveTab('ad')}
@@ -360,7 +435,9 @@ const ChatSystem: React.FC = () => {
                     fontWeight: activeTab === 'ad' ? 'bold' : 'normal'
                   }}
                 >
-                  Machinery Inquiries
+                  <Badge badgeContent={machineryInquiriesCount} color="error" sx={{ mr: 1 }}>
+                    <span>Machinery Inquiries</span>
+                  </Badge>
                 </Button>
               </Box>
             </Box>

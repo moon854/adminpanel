@@ -19,11 +19,14 @@ import {
   LocationOn as LocationIcon,
   Block as BlockIcon,
   CheckCircle as CheckCircleIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  Chat as ChatIcon
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridActionsCellItem } from '@mui/x-data-grid';
-import { collection, query, getDocs, doc, updateDoc, deleteDoc, orderBy, where } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, deleteDoc, orderBy, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useNavigate } from 'react-router-dom';
+import { notifyUserAdminReply } from '../helpers/chatNotifications';
 
 interface User {
   id: string;
@@ -48,6 +51,7 @@ const UserManagement: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchUsers();
@@ -187,6 +191,46 @@ const UserManagement: React.FC = () => {
     setDialogOpen(true);
   };
 
+  const handleChatWithUser = async (user: User) => {
+    try {
+      setActionLoading(true);
+      
+      // Create a unique chat ID for admin-initiated chat
+      const chatId = `admin_initiated_${user.id}_${Date.now()}`;
+      
+      // Create initial admin message
+      const initialMessage = {
+        chatId: chatId,
+        senderId: 'admin',
+        senderName: 'Admin',
+        senderType: 'admin',
+        message: `Hello ${user.firstName}! I'm reaching out from the admin team. How can I help you today?`,
+        createdAt: serverTimestamp(),
+        status: 'sent'
+      };
+
+      // Add the message to chatMessages collection
+      await addDoc(collection(db, 'chatMessages'), initialMessage);
+      
+      // Send notification to user
+      await notifyUserAdminReply(
+        user.id,
+        initialMessage.message,
+        chatId,
+        null // No machinery details for general support
+      );
+      
+      // Navigate to chat system
+      navigate('/chat');
+      
+    } catch (error) {
+      console.error('Error initiating chat with user:', error);
+      setError('Failed to initiate chat with user');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const getStatusColor = (isBlocked: boolean, isVerified: boolean) => {
     if (isBlocked) return 'error';
     if (isVerified) return 'success';
@@ -221,7 +265,7 @@ const UserManagement: React.FC = () => {
       field: 'actions',
       type: 'actions',
       headerName: 'Actions',
-      width: 200,
+      width: 280,
       getActions: (params) => {
         const actions = [
           <GridActionsCellItem
@@ -232,6 +276,16 @@ const UserManagement: React.FC = () => {
         ];
 
         if (params.row.role !== 'admin') {
+          // Add Chat with User action
+          actions.push(
+            <GridActionsCellItem
+              icon={<ChatIcon />}
+              label="Chat with User"
+              onClick={() => handleChatWithUser(params.row)}
+              disabled={actionLoading}
+            />
+          );
+
           if (params.row.isBlocked) {
             actions.push(
               <GridActionsCellItem
@@ -347,6 +401,20 @@ const UserManagement: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
+          {selectedUser && selectedUser.role !== 'admin' && (
+            <Button 
+              onClick={() => {
+                handleChatWithUser(selectedUser);
+                setDialogOpen(false);
+              }}
+              variant="contained"
+              startIcon={<ChatIcon />}
+              disabled={actionLoading}
+              sx={{ backgroundColor: '#47D6FF' }}
+            >
+              Chat with User
+            </Button>
+          )}
           <Button onClick={() => setDialogOpen(false)}>Close</Button>
         </DialogActions>
       </Dialog>

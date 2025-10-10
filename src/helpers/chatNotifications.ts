@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, getDocs, where, orderBy, updateDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 interface MachineryDetails {
@@ -58,5 +58,128 @@ export const notifyAdminNewMessage = async (
     console.log('Admin notification sent successfully');
   } catch (error) {
     console.error('Error sending admin notification:', error);
+  }
+};
+
+// Count unread chat messages for admin
+export const getUnreadChatCount = async (): Promise<number> => {
+  try {
+    const messagesQuery = query(
+      collection(db, 'chatMessages'),
+      where('senderType', '==', 'user'),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const snapshot = await getDocs(messagesQuery);
+    const chatIds = new Set<string>();
+    
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      chatIds.add(data.chatId);
+    });
+    
+    // Get admin notifications for new messages
+    const notificationsQuery = query(
+      collection(db, 'adminNotifications'),
+      where('type', '==', 'new_message'),
+      where('status', '==', 'unread')
+    );
+    
+    const notificationsSnapshot = await getDocs(notificationsQuery);
+    return notificationsSnapshot.size;
+  } catch (error) {
+    console.error('Error getting unread chat count:', error);
+    return 0;
+  }
+};
+
+// Mark chat notifications as read when admin opens chat
+export const markChatNotificationsAsRead = async (chatId?: string) => {
+  try {
+    let queryRef;
+    
+    if (chatId) {
+      // Mark specific chat notifications as read
+      queryRef = query(
+        collection(db, 'adminNotifications'),
+        where('type', '==', 'new_message'),
+        where('chatId', '==', chatId),
+        where('status', '==', 'unread')
+      );
+    } else {
+      // Mark all chat notifications as read
+      queryRef = query(
+        collection(db, 'adminNotifications'),
+        where('type', '==', 'new_message'),
+        where('status', '==', 'unread')
+      );
+    }
+    
+    const snapshot = await getDocs(queryRef);
+    const updatePromises = snapshot.docs.map((docSnapshot) => {
+      return updateDoc(doc(db, 'adminNotifications', docSnapshot.id), {
+        status: 'read',
+        readAt: serverTimestamp()
+      });
+    });
+    
+    await Promise.all(updatePromises);
+    console.log(`Marked ${snapshot.size} chat notifications as read`);
+  } catch (error) {
+    console.error('Error marking chat notifications as read:', error);
+  }
+};
+
+// Count unread general support messages (no machinery details)
+export const getUnreadGeneralSupportCount = async (): Promise<number> => {
+  try {
+    const notificationsQuery = query(
+      collection(db, 'adminNotifications'),
+      where('type', '==', 'new_message'),
+      where('status', '==', 'unread')
+    );
+    
+    const notificationsSnapshot = await getDocs(notificationsQuery);
+    let generalCount = 0;
+    
+    notificationsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      // Count notifications that don't have machinery details
+      if (!data.machineryDetails) {
+        generalCount++;
+      }
+    });
+    
+    return generalCount;
+  } catch (error) {
+    console.error('Error getting unread general support count:', error);
+    return 0;
+  }
+};
+
+// Count unread machinery inquiry messages (with machinery details)
+export const getUnreadMachineryInquiriesCount = async (): Promise<number> => {
+  try {
+    const notificationsQuery = query(
+      collection(db, 'adminNotifications'),
+      where('type', '==', 'new_message'),
+      where('status', '==', 'unread')
+    );
+    
+    const notificationsSnapshot = await getDocs(notificationsQuery);
+    let machineryCount = 0;
+    
+    notificationsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      // Count notifications that have machinery details
+      if (data.machineryDetails) {
+        machineryCount++;
+      }
+    });
+    
+    return machineryCount;
+  } catch (error) {
+    console.error('Error getting unread machinery inquiries count:', error);
+    return 0;
   }
 };

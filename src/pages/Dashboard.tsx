@@ -13,7 +13,8 @@ import {
   Assignment as AssignmentIcon,
   Person as PersonIcon,
   AttachMoney as MoneyIcon,
-  TrendingUp as TrendingUpIcon
+  TrendingUp as TrendingUpIcon,
+  LocalShipping as RentIcon
 } from '@mui/icons-material';
 import { collection, query, getDocs, where, orderBy } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -26,6 +27,10 @@ interface DashboardStats {
   rejectedAds: number;
   totalUsers: number;
   totalRevenue: number;
+  totalRentRequests: number;
+  pendingRentRequests: number;
+  approvedRentRequests: number;
+  rejectedRentRequests: number;
 }
 
 const Dashboard: React.FC = () => {
@@ -36,7 +41,11 @@ const Dashboard: React.FC = () => {
     approvedAds: 0,
     rejectedAds: 0,
     totalUsers: 0,
-    totalRevenue: 0
+    totalRevenue: 0,
+    totalRentRequests: 0,
+    pendingRentRequests: 0,
+    approvedRentRequests: 0,
+    rejectedRentRequests: 0
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,6 +92,32 @@ const Dashboard: React.FC = () => {
       const usersRef = collection(db, 'users');
       const usersSnapshot = await getDocs(usersRef);
       const totalUsers = usersSnapshot.size;
+
+      // Fetch rent requests statistics
+      const rentRequestsRef = collection(db, 'rentRequests');
+      const rentRequestsSnapshot = await getDocs(rentRequestsRef);
+      
+      let totalRentRequests = 0;
+      let pendingRentRequests = 0;
+      let approvedRentRequests = 0;
+      let rejectedRentRequests = 0;
+      
+      rentRequestsSnapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        totalRentRequests++;
+        
+        switch (data.status) {
+          case 'pending':
+            pendingRentRequests++;
+            break;
+          case 'approved':
+            approvedRentRequests++;
+            break;
+          case 'rejected':
+            rejectedRentRequests++;
+            break;
+        }
+      });
       
       setStats({
         totalAds,
@@ -90,7 +125,11 @@ const Dashboard: React.FC = () => {
         approvedAds,
         rejectedAds,
         totalUsers,
-        totalRevenue
+        totalRevenue,
+        totalRentRequests,
+        pendingRentRequests,
+        approvedRentRequests,
+        rejectedRentRequests
       });
       
     } catch (error) {
@@ -218,6 +257,53 @@ const Dashboard: React.FC = () => {
             value={`₹${stats.totalRevenue.toLocaleString()}`}
             icon={<MoneyIcon sx={{ fontSize: 40 }} />}
             color="success.main"
+          />
+        </Grid>
+      </Grid>
+
+      {/* Rent Requests Statistics */}
+      <Typography variant="h5" gutterBottom sx={{ mt: 4, mb: 2 }}>
+        Rent Requests Statistics
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Total Rent Requests"
+            value={stats.totalRentRequests}
+            icon={<RentIcon sx={{ fontSize: 40 }} />}
+            color="primary.main"
+            onClick={() => navigate('/rent-requests')}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Pending Requests"
+            value={stats.pendingRentRequests > 0 ? stats.pendingRentRequests : "No Pending"}
+            icon={<RentIcon sx={{ fontSize: 40 }} />}
+            color={stats.pendingRentRequests > 0 ? "warning.main" : "success.main"}
+            onClick={() => navigate('/rent-requests')}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Approved Requests"
+            value={stats.approvedRentRequests}
+            icon={<RentIcon sx={{ fontSize: 40 }} />}
+            color="success.main"
+            onClick={() => navigate('/rent-requests')}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Rejected Requests"
+            value={stats.rejectedRentRequests}
+            icon={<RentIcon sx={{ fontSize: 40 }} />}
+            color="error.main"
+            onClick={() => navigate('/rent-requests')}
           />
         </Grid>
       </Grid>

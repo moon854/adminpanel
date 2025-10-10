@@ -28,12 +28,15 @@ import {
   People as PeopleIcon,
   Notifications as NotificationsIcon,
   AccountCircle,
-  Logout
+  Logout,
+  CardMembership as PublishersIcon,
+  LocalShipping as RentIcon
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, getDocs, where, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useEffect } from 'react';
+import { getUnreadChatCount } from '../helpers/chatNotifications';
 
 const drawerWidth = 240;
 
@@ -41,6 +44,8 @@ const menuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
   { text: 'Pending Ads', icon: <AssignmentIcon />, path: '/ads' },
   { text: 'Approved Ads', icon: <AssignmentIcon />, path: '/approved-ads' },
+  { text: 'Ad Publishers', icon: <PublishersIcon />, path: '/ad-publishers' },
+  { text: 'Rent Requests', icon: <RentIcon />, path: '/rent-requests' },
   { text: 'Request Management', icon: <RequestIcon />, path: '/requests' },
   { text: 'Chat System', icon: <ChatIcon />, path: '/chat' },
   { text: 'User Management', icon: <PeopleIcon />, path: '/users' },
@@ -51,6 +56,7 @@ const Layout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const { adminUser, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,12 +73,42 @@ const Layout: React.FC = () => {
     }
   }, []);
 
+  // Fetch unread chat count
+  const fetchUnreadChatCount = useCallback(async () => {
+    try {
+      const count = await getUnreadChatCount();
+      setUnreadChatCount(count);
+    } catch (error) {
+      console.error('Error fetching unread chat count:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchUnreadCount();
+    fetchUnreadChatCount();
+    
+    // Set up real-time listener for chat notifications
+    const chatNotificationsQuery = query(
+      collection(db, 'adminNotifications'),
+      where('type', '==', 'new_message'),
+      where('status', '==', 'unread')
+    );
+    
+    const unsubscribeChatNotifications = onSnapshot(chatNotificationsQuery, (snapshot) => {
+      setUnreadChatCount(snapshot.size);
+    });
+    
     // Refresh every 60 seconds instead of 30 for better performance
-    const interval = setInterval(fetchUnreadCount, 60000);
-    return () => clearInterval(interval);
-  }, [fetchUnreadCount]);
+    const interval = setInterval(() => {
+      fetchUnreadCount();
+      fetchUnreadChatCount();
+    }, 60000);
+    
+    return () => {
+      clearInterval(interval);
+      unsubscribeChatNotifications();
+    };
+  }, [fetchUnreadCount, fetchUnreadChatCount]);
 
   const handleDrawerToggle = useCallback(() => {
     setMobileOpen(prev => !prev);
@@ -128,6 +164,10 @@ const Layout: React.FC = () => {
                   <Badge badgeContent={unreadCount} color="error">
                     {item.icon}
                   </Badge>
+                ) : item.text === 'Chat System' ? (
+                  <Badge badgeContent={unreadChatCount} color="error">
+                    {item.icon}
+                  </Badge>
                 ) : (
                   item.icon
                 )}
@@ -138,7 +178,7 @@ const Layout: React.FC = () => {
         ))}
       </List>
     </div>
-  ), [location.pathname, navigate, unreadCount]);
+  ), [location.pathname, navigate, unreadCount, unreadChatCount]);
 
   return (
     <Box sx={{ display: 'flex' }}>
