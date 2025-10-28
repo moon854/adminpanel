@@ -204,6 +204,7 @@ const UserManagement: React.FC = () => {
         senderId: 'admin',
         senderName: 'Admin',
         senderType: 'admin',
+        recipientId: user.id, // Add recipientId for app notifications
         message: `Hello ${user.firstName}! I'm reaching out from the admin team. How can I help you today?`,
         createdAt: serverTimestamp(),
         status: 'sent'

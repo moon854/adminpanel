@@ -231,11 +231,153 @@ const RentRequests: React.FC = () => {
     setDialogOpen(true);
   };
 
+  // Utility function to parse dates from various formats
+  const parseDate = (dateStr: string): Date | null => {
+    console.log('parseDate called with:', dateStr);
+    if (!dateStr) {
+      console.log('No date string provided');
+      return null;
+    }
+    
+    try {
+      const str = dateStr.toString().trim();
+      console.log('Trimmed date string:', str);
+      let startDate: Date | null = null;
+      
+      // Format 1: DD/MM/YYYY or DD-MM-YYYY
+      if (str.includes('/') || str.includes('-')) {
+        const dateParts = str.split(/[/-]/);
+        if (dateParts.length === 3) {
+          const day = parseInt(dateParts[0]);
+          const month = parseInt(dateParts[1]) - 1; // Month is 0-indexed
+          const year = parseInt(dateParts[2]);
+          
+          if (!isNaN(day) && !isNaN(month) && !isNaN(year) && 
+              day >= 1 && day <= 31 && month >= 0 && month <= 11 && year >= 2020) {
+            startDate = new Date(year, month, day);
+          }
+        }
+      }
+      
+      // Format 2: MM/DD/YYYY (American format)
+      if (!startDate && str.includes('/')) {
+        const dateParts = str.split('/');
+        if (dateParts.length === 3) {
+          const month = parseInt(dateParts[0]) - 1;
+          const day = parseInt(dateParts[1]);
+          const year = parseInt(dateParts[2]);
+          
+          if (!isNaN(day) && !isNaN(month) && !isNaN(year) && 
+              day >= 1 && day <= 31 && month >= 0 && month <= 11 && year >= 2020) {
+            startDate = new Date(year, month, day);
+          }
+        }
+      }
+      
+      // Format 3: YYYY-MM-DD
+      if (!startDate && str.includes('-')) {
+        const dateParts = str.split('-');
+        if (dateParts.length === 3 && dateParts[0].length === 4) {
+          const year = parseInt(dateParts[0]);
+          const month = parseInt(dateParts[1]) - 1;
+          const day = parseInt(dateParts[2]);
+          
+          if (!isNaN(day) && !isNaN(month) && !isNaN(year) && 
+              day >= 1 && day <= 31 && month >= 0 && month <= 11 && year >= 2020) {
+            startDate = new Date(year, month, day);
+          }
+        }
+      }
+      
+      if (startDate && !isNaN(startDate.getTime())) {
+        console.log('Successfully parsed date:', startDate.toLocaleDateString('en-GB'));
+        return startDate;
+      } else {
+        console.log('Failed to create valid date');
+      }
+    } catch (error) {
+      console.error('Date parse error:', error);
+    }
+    
+    console.log('parseDate returning null');
+    return null;
+  };
+
+  // Function to get actual rental status based on dates
+  const getActualStatus = (request: RentRequest): string => {
+    const status = request.status;
+    
+    console.log(`=== Admin Panel Status Check for ${request.machineryName} ===`);
+    console.log('Original status:', status);
+    console.log('rentalStartDate:', request.rentalStartDate);
+    console.log('numberOfDays:', request.numberOfDays);
+    
+    // If not approved, return the original status
+    if (status !== 'approved') {
+      console.log('Not approved, returning original status:', status);
+      return status;
+    }
+    
+    // For approved requests, check if rental period has ended
+    if (request.rentalStartDate && request.numberOfDays) {
+      const startDate = parseDate(request.rentalStartDate);
+      console.log('Parsed startDate:', startDate);
+      
+      if (startDate) {
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + (parseInt(request.numberOfDays.toString()) - 1));
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        endDate.setHours(0, 0, 0, 0);
+        
+        console.log('Start Date:', startDate.toLocaleDateString('en-GB'));
+        console.log('End Date:', endDate.toLocaleDateString('en-GB'));
+        console.log('Today:', today.toLocaleDateString('en-GB'));
+        console.log('Is completed (today >= endDate):', today >= endDate);
+        
+        // If today >= end date, rental is completed
+        // Also check if end date is more than 1 day in the past (for safety)
+        const daysDiff = (today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24);
+        console.log('Days difference:', daysDiff);
+        
+        if (today >= endDate || daysDiff > 0) {
+          console.log('Returning COMPLETED');
+          return 'completed';
+        } else {
+          console.log('Returning ACTIVE');
+          return 'active';
+        }
+      } else {
+        console.log('Failed to parse startDate');
+      }
+    } else {
+      console.log('Missing rentalStartDate or numberOfDays');
+    }
+    
+    // Default to completed if date calculation fails (for old rentals)
+    console.log('Defaulting to COMPLETED');
+    return 'completed';
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'active': return 'success';
+      case 'completed': return 'default';
       case 'approved': return 'success';
       case 'rejected': return 'error';
       default: return 'warning';
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'active': return 'Active';
+      case 'completed': return 'Completed';
+      case 'approved': return 'Active';
+      case 'rejected': return 'Rejected';
+      case 'pending': return 'Pending';
+      default: return status.toUpperCase();
     }
   };
 
@@ -250,16 +392,35 @@ const RentRequests: React.FC = () => {
       renderCell: (params) => `Rs. ${params.value?.toLocaleString() || 0}`
     },
     { 
+      field: 'endDate', 
+      headerName: 'End Date', 
+      width: 120,
+      renderCell: (params) => {
+        if (params.row.rentalStartDate && params.row.numberOfDays) {
+          const startDate = parseDate(params.row.rentalStartDate);
+          if (startDate) {
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + (parseInt(params.row.numberOfDays.toString()) - 1));
+            return endDate.toLocaleDateString('en-GB');
+          }
+        }
+        return 'N/A';
+      }
+    },
+    { 
       field: 'status', 
       headerName: 'Status', 
       width: 120,
-      renderCell: (params) => (
-        <Chip 
-          label={params.value?.toUpperCase()} 
-          color={getStatusColor(params.value) as any}
-          size="small"
-        />
-      )
+      renderCell: (params) => {
+        const actualStatus = getActualStatus(params.row);
+        return (
+          <Chip 
+            label={getStatusLabel(actualStatus)} 
+            color={getStatusColor(actualStatus) as any}
+            size="small"
+          />
+        );
+      }
     },
     {
       field: 'actions',

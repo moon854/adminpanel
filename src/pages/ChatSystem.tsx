@@ -98,9 +98,11 @@ const ChatSystem: React.FC = () => {
       snapshot.forEach((doc) => {
         const data = doc.data();
         if (data.status === 'unread') {
-          if (data.machineryDetails) {
+          const chatId = data.chatId;
+          // Count based on chatId prefix - more reliable than machineryDetails
+          if (chatId?.startsWith('machinery_')) {
             machineryCount++;
-          } else {
+          } else if (chatId?.startsWith('general_') || chatId?.startsWith('admin_initiated_')) {
             generalCount++;
           }
         }
@@ -138,68 +140,100 @@ const ChatSystem: React.FC = () => {
     try {
       setLoading(true);
       
-      // Get general chats (no machinery details) - simplified query
-      const generalMessagesQuery = query(
+      // Get ALL messages once
+      const messagesQuery = query(
         collection(db, 'chatMessages'), 
         orderBy('createdAt', 'desc')
       );
-      const generalSnapshot = await getDocs(generalMessagesQuery);
+      const allMessagesSnapshot = await getDocs(messagesQuery);
       
-      const generalChatIds = new Set<string>();
-      const generalChatDataMap = new Map<string, any>();
+      const generalChatMap = new Map<string, any>();
+      const machineryChatMap = new Map<string, any>();
       
-      generalSnapshot.forEach((doc) => {
+      console.log('📥 Fetching chats - Total messages in DB:', allMessagesSnapshot.size);
+      
+      allMessagesSnapshot.forEach((doc) => {
         const data = doc.data();
-        // Filter for general chats (no machinery details and not machinery-related chatId)
-        if (!data.machineryDetails && !generalChatIds.has(data.chatId) && !data.chatId?.includes('machinery_')) {
-          generalChatIds.add(data.chatId);
-          
-          // For admin-initiated chats, we need to extract the user ID from the chatId
-          let userId = data.senderId;
-          let userName = data.senderName;
-          
-          if (data.senderId === 'admin' && data.chatId.includes('admin_initiated_')) {
-            // Extract user ID from admin-initiated chat ID format: admin_initiated_{userId}_{timestamp}
-            const chatIdParts = data.chatId.split('_');
-            if (chatIdParts.length >= 3) {
-              userId = chatIdParts[2];
-              // We'll fetch the user name separately below
+        const chatId = data.chatId || '';
+        
+        // STRICT: General chats MUST start with 'general_' or 'admin_initiated_' AND NOT 'machinery_'
+        if ((chatId.startsWith('general_') || chatId.startsWith('admin_initiated_')) && !chatId.startsWith('machinery_')) {
+          console.log('📍 Found general chat:', chatId);
+          if (!generalChatMap.has(chatId) || 
+              (generalChatMap.get(chatId)?.lastMessageTime?.toDate?.() || new Date(0)) < (data.createdAt?.toDate?.() || new Date(0))) {
+            // Extract user ID from chatId
+            let userId = data.senderId;
+            if (chatId.startsWith('general_')) {
+              userId = chatId.replace('general_', '');
+            } else if (chatId.startsWith('admin_initiated_')) {
+              const parts = chatId.split('_');
+              if (parts.length >= 3) {
+                userId = parts[2];
+              }
             }
+            
+            generalChatMap.set(chatId, {
+              chatId: chatId,
+              userId: userId,
+              userName: userId, // Will be replaced when we fetch actual user data
+              lastMessage: data.message,
+              lastMessageTime: data.createdAt,
+              isAdminInitiated: data.senderId === 'admin' && chatId.includes('admin_initiated_')
+            });
           }
-          
-          generalChatDataMap.set(data.chatId, {
-            chatId: data.chatId,
-            userId: userId,
-            userName: userName,
-            lastMessage: data.message,
-            lastMessageTime: data.createdAt,
-            chatType: 'general',
-            isAdminInitiated: data.senderId === 'admin'
-          });
+        }
+        
+        // STRICT: Machinery chats MUST start with 'machinery_' and have machineryDetails
+        if (chatId.startsWith('machinery_') && data.machineryDetails) {
+          console.log('📍 Found machinery chat:', chatId);
+          if (!machineryChatMap.has(chatId) || 
+              (machineryChatMap.get(chatId)?.lastMessageTime?.toDate?.() || new Date(0)) < (data.createdAt?.toDate?.() || new Date(0))) {
+            // Extract user ID from chatId (format: machinery_{machineryId}_{userId})
+            let userId = data.senderId;
+            if (chatId.startsWith('machinery_')) {
+              const parts = chatId.split('_');
+              if (parts.length >= 3) {
+                userId = parts[parts.length - 1]; // Last part is userId
+              }
+            }
+            
+            machineryChatMap.set(chatId, {
+              chatId: chatId,
+              userId: userId,
+              userName: userId, // Will be replaced when we fetch actual user data
+              lastMessage: data.message,
+              lastMessageTime: data.createdAt,
+              machineryDetails: data.machineryDetails
+            });
+          }
         }
       });
       
       const generalChatsData: Chat[] = [];
+      const generalChatArray = Array.from(generalChatMap.keys());
       
-      for (const chatId of Array.from(generalChatIds)) {
-        const chatData = generalChatDataMap.get(chatId);
+      for (let i = 0; i < generalChatArray.length; i++) {
+        const chatId = generalChatArray[i];
+        const chatData = generalChatMap.get(chatId);
+        
+        if (!chatData) continue;
         
         // Fetch user data
         const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', chatData.userId)));
         let userEmail = 'unknown@email.com';
-        let displayName = chatData.userName;
+        let displayName = 'User';
+        
+        console.log('Fetching user for general chatId:', chatId, 'userId:', chatData.userId, 'Found docs:', userDoc.size);
         
         if (!userDoc.empty) {
           const userData = userDoc.docs[0].data();
-          userEmail = userData.email;
-          
-          // For admin-initiated chats, use the actual user's name
-          if (chatData.isAdminInitiated) {
-            displayName = `${userData.firstName} ${userData.lastName}`.trim();
-          }
+          userEmail = userData.email || userEmail;
+          displayName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || userData.email || 'User';
+          console.log('Found user:', displayName, 'Email:', userEmail);
+        } else {
+          console.log('User not found for userId:', chatData.userId);
         }
         
-        console.log('Adding general chat:', chatId, chatData);
         generalChatsData.push({
           id: chatId,
           chatId: chatId,
@@ -208,66 +242,77 @@ const ChatSystem: React.FC = () => {
           userEmail,
           lastMessage: chatData.lastMessage || 'No messages yet',
           lastMessageTime: chatData.lastMessageTime,
-          unreadCount: 0,
+          unreadCount: 0, // Will be updated later
           status: 'active'
         });
       }
       
-      // Get ad-specific chats (with machinery details) - simplified query
-      const adMessagesQuery = query(
-        collection(db, 'chatMessages'), 
-        orderBy('createdAt', 'desc')
-      );
-      const adSnapshot = await getDocs(adMessagesQuery);
-      
-      const adChatIds = new Set<string>();
-      const adChatDataMap = new Map<string, any>();
-      
-      adSnapshot.forEach((doc) => {
-        const data = doc.data();
-        // Filter for ad-specific chats (with machinery details)
-        if (data.machineryDetails && !adChatIds.has(data.chatId)) {
-          adChatIds.add(data.chatId);
-          adChatDataMap.set(data.chatId, {
-            chatId: data.chatId,
-            userId: data.senderId,
-            userName: data.senderName,
-            lastMessage: data.message,
-            lastMessageTime: data.createdAt,
-            machineryDetails: data.machineryDetails,
-            chatType: 'ad'
-          });
-        }
-      });
-      
       const adChatsData: Chat[] = [];
+      const machineryChatArray = Array.from(machineryChatMap.keys());
       
-      for (const chatId of Array.from(adChatIds)) {
-        const chatData = adChatDataMap.get(chatId);
+      for (let i = 0; i < machineryChatArray.length; i++) {
+        const chatId = machineryChatArray[i];
+        const chatData = machineryChatMap.get(chatId);
+        
+        if (!chatData) continue;
         
         // Fetch user data
         const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', chatData.userId)));
         let userEmail = 'unknown@email.com';
+        let displayName = 'User';
+        
+        console.log('Fetching user for machinery chatId:', chatId, 'userId:', chatData.userId, 'Found docs:', userDoc.size);
         
         if (!userDoc.empty) {
           const userData = userDoc.docs[0].data();
-          userEmail = userData.email;
+          userEmail = userData.email || userEmail;
+          displayName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || userData.email || 'User';
+          console.log('Found user:', displayName, 'Email:', userEmail);
+        } else {
+          console.log('User not found for userId:', chatData.userId);
         }
         
-        console.log('Adding ad chat:', chatId, chatData);
         adChatsData.push({
           id: chatId,
           chatId: chatId,
           userId: chatData.userId,
-          userName: chatData.userName,
+          userName: displayName,
           userEmail,
           machineryDetails: chatData.machineryDetails,
           lastMessage: chatData.lastMessage || 'No messages yet',
           lastMessageTime: chatData.lastMessageTime,
-          unreadCount: 0,
+          unreadCount: 0, // Will be updated later
           status: 'active'
         });
       }
+      
+      // Get unread counts for chats
+      const adminNotificationsQuery = query(
+        collection(db, 'adminNotifications'),
+        where('type', '==', 'new_message'),
+        where('status', '==', 'unread')
+      );
+      const notificationsSnapshot = await getDocs(adminNotificationsQuery);
+      
+      const chatUnreadMap = new Map<string, number>();
+      notificationsSnapshot.forEach((doc) => {
+        const data = doc.data();
+        const chatId = data.chatId;
+        // Only count notifications for chats that match the chat's type
+        if ((chatId?.startsWith('machinery_') && data.machineryDetails) ||
+            ((chatId?.startsWith('general_') || chatId?.startsWith('admin_initiated_')) && !data.machineryDetails)) {
+          chatUnreadMap.set(chatId, (chatUnreadMap.get(chatId) || 0) + 1);
+        }
+      });
+      
+      // Add unread counts to chats
+      generalChatsData.forEach(chat => {
+        chat.unreadCount = chatUnreadMap.get(chat.chatId) || 0;
+      });
+      
+      adChatsData.forEach(chat => {
+        chat.unreadCount = chatUnreadMap.get(chat.chatId) || 0;
+      });
       
       // Sort by last message time
       generalChatsData.sort((a, b) => {
@@ -284,8 +329,12 @@ const ChatSystem: React.FC = () => {
       
       setGeneralChats(generalChatsData);
       setAdChats(adChatsData);
+      
+      console.log('✅ Loaded chats successfully:');
+      console.log('  - General Support:', generalChatsData.length, 'chats');
+      console.log('  - Machinery Inquiries:', adChatsData.length, 'chats');
     } catch (error) {
-      console.error('Error fetching chats:', error);
+      console.error('❌ Error fetching chats:', error);
       setError('Failed to load chats');
     } finally {
       setLoading(false);
@@ -306,21 +355,35 @@ const ChatSystem: React.FC = () => {
         where('chatId', '==', chatId)
       );
       
+      console.log('👂 Listening for messages with chatId:', chatId);
+      
       const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
         const messagesData: Message[] = [];
+        
+        console.log('📨 Received snapshot with', snapshot.size, 'messages');
+        
         snapshot.forEach((doc) => {
           const data = doc.data();
-          messagesData.push({
-            id: doc.id,
-            chatId: data.chatId,
-            senderId: data.senderId,
-            senderName: data.senderName,
-            senderType: data.senderType,
-            message: data.message,
-            machineryDetails: data.machineryDetails,
-            createdAt: data.createdAt,
-            status: data.status || 'sent'
-          });
+          // Only get messages that match the exact chatId
+          if (data.chatId === chatId) {
+            console.log('✅ Matched message:', {
+              id: doc.id,
+              chatId: data.chatId,
+              senderType: data.senderType,
+              message: data.message?.substring(0, 30)
+            });
+            messagesData.push({
+              id: doc.id,
+              chatId: data.chatId,
+              senderId: data.senderId,
+              senderName: data.senderName,
+              senderType: data.senderType,
+              message: data.message,
+              machineryDetails: data.machineryDetails,
+              createdAt: data.createdAt,
+              status: data.status || 'sent'
+            });
+          }
         });
         
         // Sort messages by creation time (client-side)
@@ -330,6 +393,7 @@ const ChatSystem: React.FC = () => {
           return aTime.getTime() - bTime.getTime();
         });
         
+        console.log('📬 Displaying', messagesData.length, 'messages for this chat');
         setMessages(messagesData);
       });
 
@@ -344,25 +408,50 @@ const ChatSystem: React.FC = () => {
     if (!newMessage.trim() || !selectedChat) return;
 
     try {
-      const messageData = {
+      // Determine if this is a machinery inquiry or general support based on chatId
+      const isMachineryChat = selectedChat.chatId?.startsWith('machinery_');
+      
+      // STRICT: Only include machineryDetails if this is a machinery chat
+      const messageData: any = {
         chatId: selectedChat.chatId,
         senderId: 'admin',
         senderName: 'Admin',
         senderType: 'admin',
+        recipientId: selectedChat.userId,
         message: newMessage.trim(),
         createdAt: serverTimestamp(),
         status: 'sent'
       };
 
+      // For machinery chats: include machineryDetails
+      if (isMachineryChat && selectedChat.machineryDetails) {
+        messageData.machineryDetails = selectedChat.machineryDetails;
+      } else {
+        // For general chats: explicitly set to null
+        messageData.machineryDetails = null;
+      }
+      
+      console.log('📤 Sending message:', {
+        chatId: messageData.chatId,
+        senderId: messageData.senderId,
+        recipientId: messageData.recipientId,
+        machineryDetails: messageData.machineryDetails,
+        message: messageData.message.substring(0, 50)
+      });
+      
       await addDoc(collection(db, 'chatMessages'), messageData);
+      
+      console.log('✅ Message sent successfully');
       
       // Send notification to user
       await notifyUserAdminReply(
         selectedChat.userId,
         newMessage.trim(),
         selectedChat.chatId,
-        selectedChat.machineryDetails
+        isMachineryChat && selectedChat.machineryDetails ? selectedChat.machineryDetails : null
       );
+      
+      console.log('✅ Notification sent to user');
       
       setNewMessage('');
     } catch (error) {

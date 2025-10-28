@@ -64,20 +64,6 @@ export const notifyAdminNewMessage = async (
 // Count unread chat messages for admin
 export const getUnreadChatCount = async (): Promise<number> => {
   try {
-    const messagesQuery = query(
-      collection(db, 'chatMessages'),
-      where('senderType', '==', 'user'),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const snapshot = await getDocs(messagesQuery);
-    const chatIds = new Set<string>();
-    
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      chatIds.add(data.chatId);
-    });
-    
     // Get admin notifications for new messages
     const notificationsQuery = query(
       collection(db, 'adminNotifications'),
@@ -144,8 +130,9 @@ export const getUnreadGeneralSupportCount = async (): Promise<number> => {
     
     notificationsSnapshot.forEach((doc) => {
       const data = doc.data();
-      // Count notifications that don't have machinery details
-      if (!data.machineryDetails) {
+      const chatId = data.chatId;
+      // Count notifications where chatId starts with 'general_' or 'admin_initiated_'
+      if (chatId?.startsWith('general_') || chatId?.startsWith('admin_initiated_')) {
         generalCount++;
       }
     });
@@ -171,8 +158,9 @@ export const getUnreadMachineryInquiriesCount = async (): Promise<number> => {
     
     notificationsSnapshot.forEach((doc) => {
       const data = doc.data();
-      // Count notifications that have machinery details
-      if (data.machineryDetails) {
+      const chatId = data.chatId;
+      // Count notifications where chatId starts with 'machinery_'
+      if (chatId?.startsWith('machinery_')) {
         machineryCount++;
       }
     });
