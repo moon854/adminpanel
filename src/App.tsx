@@ -18,6 +18,7 @@ const RequestManagement = React.lazy(() => import('./pages/RequestManagement'));
 const ChatSystem = React.lazy(() => import('./pages/ChatSystem'));
 const UserManagement = React.lazy(() => import('./pages/UserManagement'));
 const AdminNotifications = React.lazy(() => import('./pages/AdminNotifications'));
+const CreateAdmin = React.lazy(() => import('./pages/CreateAdmin'));
 
 // Create Material-UI theme
 const theme = createTheme({
@@ -42,6 +43,11 @@ function App() {
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/create-admin" element={
+              <Suspense fallback={<div>Loading...</div>}>
+                <CreateAdmin />
+              </Suspense>
+            } />
             <Route path="/" element={
               <ProtectedRoute>
                 <Layout />

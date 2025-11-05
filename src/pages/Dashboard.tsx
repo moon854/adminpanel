@@ -31,6 +31,7 @@ interface DashboardStats {
   pendingRentRequests: number;
   approvedRentRequests: number;
   rejectedRentRequests: number;
+  completedRentalsRevenue?: number;
 }
 
 const Dashboard: React.FC = () => {
@@ -45,7 +46,8 @@ const Dashboard: React.FC = () => {
     totalRentRequests: 0,
     pendingRentRequests: 0,
     approvedRentRequests: 0,
-    rejectedRentRequests: 0
+    rejectedRentRequests: 0,
+    completedRentalsRevenue: 0
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +95,7 @@ const Dashboard: React.FC = () => {
       const usersSnapshot = await getDocs(usersRef);
       const totalUsers = usersSnapshot.size;
 
-      // Fetch rent requests statistics
+      // Fetch rent requests statistics and completed rentals revenue
       const rentRequestsRef = collection(db, 'rentRequests');
       const rentRequestsSnapshot = await getDocs(rentRequestsRef);
       
@@ -101,6 +103,82 @@ const Dashboard: React.FC = () => {
       let pendingRentRequests = 0;
       let approvedRentRequests = 0;
       let rejectedRentRequests = 0;
+      let completedRentalsRevenue = 0;
+      let approvedAdvanceRevenue = 0;
+
+      const parseAmount = (val: any): number => {
+        if (val === null || val === undefined) return 0;
+        if (typeof val === 'number') return isNaN(val) ? 0 : val;
+        const str = String(val).toString().trim();
+        if (!str) return 0;
+        // remove currency, commas, spaces
+        const cleaned = str.replace(/[^0-9.\-]/g, '');
+        const num = parseFloat(cleaned);
+        return isNaN(num) ? 0 : num;
+      };
+
+      const parseDate = (dateStr: string): Date | null => {
+        if (!dateStr) return null;
+        try {
+          const str = dateStr.toString().trim();
+          let d: Date | null = null;
+          if (str.includes('-')) {
+            const parts = str.split('-');
+            if (parts.length === 3 && parts[0].length === 4) {
+              const year = parseInt(parts[0]);
+              const month = parseInt(parts[1]) - 1;
+              const day = parseInt(parts[2]);
+              d = new Date(year, month, day);
+            }
+          }
+          if (!d && str.includes('/')) {
+            const parts = str.split('/');
+            if (parts.length === 3) {
+              // Try DD/MM/YYYY first
+              const dd = parseInt(parts[0]);
+              const mm = parseInt(parts[1]) - 1;
+              const yy = parseInt(parts[2]);
+              const tryDMY = new Date(yy, mm, dd);
+              if (!isNaN(tryDMY.getTime())) return tryDMY;
+              // Fallback MM/DD/YYYY
+              const mm2 = parseInt(parts[0]) - 1;
+              const dd2 = parseInt(parts[1]);
+              const yy2 = parseInt(parts[2]);
+              d = new Date(yy2, mm2, dd2);
+            }
+          }
+          return d && !isNaN(d.getTime()) ? d : null;
+        } catch { return null; }
+      };
+
+      const isRentalCompleted = (req: any): boolean => {
+        if (req?.status === 'completed') return true;
+        if (req?.status !== 'approved') {
+          return false;
+        }
+        // Check by date if possible
+        if (req?.rentalStartDate && req?.numberOfDays) {
+          const start = parseDate(req.rentalStartDate);
+          if (start) {
+            const end = new Date(start);
+            end.setDate(end.getDate() + (parseInt(req.numberOfDays?.toString() || '0') - 1));
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            end.setHours(0,0,0,0);
+            if (today >= end) return true;
+          }
+        }
+        // Fallback: if payments indicate full paid
+        const adv = parseAmount(req?.advancePayment);
+        const rem = parseAmount(req?.remainingPayment);
+        const grand = parseAmount(req?.grandTotal);
+        const totalRent = parseAmount(req?.totalRent);
+        const rentPerDay = parseAmount(req?.rentPerDay);
+        const days = parseInt((req?.numberOfDays || 0).toString()) || 0;
+        const expected = grand > 0 ? grand : totalRent > 0 ? totalRent : rentPerDay > 0 && days > 0 ? rentPerDay * days : 0;
+        if (expected > 0 && adv + rem >= expected) return true;
+        return false;
+      };
       
       rentRequestsSnapshot.docs.forEach((doc) => {
         const data = doc.data();
@@ -117,6 +195,33 @@ const Dashboard: React.FC = () => {
             rejectedRentRequests++;
             break;
         }
+
+        // Sum revenue for completed rentals only (exclude security deposit)
+        if (isRentalCompleted(data)) {
+          const grandTotal = parseAmount(data.grandTotal);
+          const totalRent = parseAmount(data.totalRent);
+          const rentPerDay = parseAmount(data.rentPerDay);
+          const securityDeposit = parseAmount(data.securityDeposit);
+          const adv = parseAmount(data.advancePayment);
+          const rem = parseAmount(data.remainingPayment);
+          const days = parseInt((data.numberOfDays || 0).toString()) || 0;
+          let amount = 0;
+          if (grandTotal > 0) amount = grandTotal;
+          else if (adv + rem > 0) amount = adv + rem;
+          else if (totalRent > 0) amount = totalRent;
+          else if (rentPerDay > 0 && days > 0) amount = rentPerDay * days;
+          const net = Math.max(0, amount - securityDeposit);
+          completedRentalsRevenue += net;
+        }
+
+        // Sum advances for rented machinery (approved or completed)
+        const isRentedForAdvance = data?.status === 'approved' || isRentalCompleted(data);
+        if (isRentedForAdvance) {
+          const advOnly = parseAmount(data.advancePayment);
+          if (advOnly > 0) {
+            approvedAdvanceRevenue += advOnly;
+          }
+        }
       });
       
       setStats({
@@ -125,11 +230,12 @@ const Dashboard: React.FC = () => {
         approvedAds,
         rejectedAds,
         totalUsers,
-        totalRevenue,
+        totalRevenue: approvedAdvanceRevenue,
         totalRentRequests,
         pendingRentRequests,
         approvedRentRequests,
-        rejectedRentRequests
+        rejectedRentRequests,
+        completedRentalsRevenue
       });
       
     } catch (error) {
@@ -154,7 +260,7 @@ const Dashboard: React.FC = () => {
     <Card 
       sx={{ 
         cursor: onClick ? 'pointer' : 'default',
-        height: '140px',
+        height: { xs: '160px', md: '180px' },
         transition: 'all 0.2s ease-in-out',
         '&:hover': onClick ? { 
           boxShadow: 3,
@@ -163,26 +269,39 @@ const Dashboard: React.FC = () => {
       }}
       onClick={onClick}
     >
-      <CardContent>
-        <Box display="flex" alignItems="center" justifyContent="space-between">
-          <Box>
-            <Typography color="textSecondary" gutterBottom variant="h6">
+      <CardContent sx={{ height: '100%' }}>
+        <Box display="flex" alignItems="stretch" justifyContent="space-between" height="100%" gap={2}>
+          <Box flex={1} minWidth={0} display="flex" flexDirection="column" justifyContent="space-between">
+            <Typography 
+              color="textSecondary" 
+              gutterBottom 
+              variant="subtitle2"
+              sx={{ 
+                whiteSpace: 'normal',
+                wordBreak: 'break-word',
+                lineHeight: 1.3,
+                fontWeight: 600
+              }}
+            >
               {title}
             </Typography>
             <Typography 
-              variant="h4" 
               component="div"
               sx={{ 
-                color: typeof value === 'string' && value.includes('No') ? 'text.secondary' : undefined,
-                fontSize: typeof value === 'string' && value.includes('No') ? '0.9rem' : undefined,
-                fontWeight: typeof value === 'string' && value.includes('No') ? 'normal' : undefined,
-                lineHeight: typeof value === 'string' && value.includes('No') ? '1.2' : undefined
+                fontSize: typeof value === 'string' 
+                  ? { xs: '1rem', sm: '1.1rem', md: '1.2rem' }
+                  : { xs: '1.4rem', sm: '1.6rem', md: '1.8rem' },
+                fontWeight: typeof value === 'string' ? 600 : 700,
+                whiteSpace: typeof value === 'string' ? 'normal' : 'nowrap',
+                wordBreak: typeof value === 'string' ? 'break-word' : 'normal',
+                overflow: typeof value === 'string' ? 'visible' : 'hidden',
+                textOverflow: typeof value === 'string' ? 'clip' : 'ellipsis'
               }}
             >
               {value}
             </Typography>
           </Box>
-          <Box color={color}>
+          <Box color={color} display="flex" alignItems="center">
             {icon}
           </Box>
         </Box>
@@ -251,10 +370,18 @@ const Dashboard: React.FC = () => {
           />
         </Grid>
         
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <StatCard
-            title="Estimated Revenue"
+            title="Total Revenue (Approved Advances)"
             value={`₹${stats.totalRevenue.toLocaleString()}`}
+            icon={<MoneyIcon sx={{ fontSize: 40 }} />}
+            color="success.main"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={4}>
+          <StatCard
+            title="Completed Rentals Revenue"
+            value={`₹${(stats.completedRentalsRevenue || 0).toLocaleString()}`}
             icon={<MoneyIcon sx={{ fontSize: 40 }} />}
             color="success.main"
           />

@@ -8,7 +8,8 @@ import {
   Typography,
   Box,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Link
 } from '@mui/material';
 import { AdminPanelSettings } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
@@ -113,6 +114,16 @@ const Login: React.FC = () => {
               >
                 {loading ? <CircularProgress size={24} color="inherit" /> : 'Sign In'}
               </Button>
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Link
+                  component="button"
+                  variant="body2"
+                  onClick={() => navigate('/create-admin')}
+                  sx={{ color: '#47D6FF', textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
+                >
+                  Don't have an admin account? Create one
+                </Link>
+              </Box>
             </Box>
           </Box>
         </Paper>

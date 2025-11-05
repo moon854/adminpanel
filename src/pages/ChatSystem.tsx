@@ -94,22 +94,79 @@ const ChatSystem: React.FC = () => {
     const unsubscribeChatNotifications = onSnapshot(chatNotificationsQuery, (snapshot) => {
       let generalCount = 0;
       let machineryCount = 0;
+      const chatUnreadMap = new Map<string, number>();
+      const latestUserMessageMap = new Map<string, { message: string; createdAt: any }>();
       
       snapshot.forEach((doc) => {
         const data = doc.data();
-        if (data.status === 'unread') {
-          const chatId = data.chatId;
-          // Count based on chatId prefix - more reliable than machineryDetails
-          if (chatId?.startsWith('machinery_')) {
+        const isUnread = data.status === 'unread';
+        const chatId: string | undefined = data.chatId;
+        if (isUnread && chatId) {
+          // Per-chat unread map
+          chatUnreadMap.set(chatId, (chatUnreadMap.get(chatId) || 0) + 1);
+          // Tab counts by chat type
+          if (chatId.startsWith('machinery_')) {
             machineryCount++;
-          } else if (chatId?.startsWith('general_') || chatId?.startsWith('admin_initiated_')) {
+          } else if (chatId.startsWith('general_') || chatId.startsWith('admin_initiated_')) {
             generalCount++;
+          }
+        }
+        // Track latest user message per chat for preview (use notification message and time)
+        if (chatId) {
+          const prev = latestUserMessageMap.get(chatId);
+          const prevTime = prev?.createdAt?.toDate?.()?.getTime?.() || 0;
+          const currTime = data.createdAt?.toDate?.()?.getTime?.() || 0;
+          if (!prev || currTime >= prevTime) {
+            latestUserMessageMap.set(chatId, { message: data.message || '', createdAt: data.createdAt });
           }
         }
       });
       
+      // Update tab badges
       setGeneralSupportCount(generalCount);
       setMachineryInquiriesCount(machineryCount);
+      
+      // Update per-chat unread badges and latest user message preview in both lists
+      setGeneralChats((prev) => {
+        const updated = prev.map((c) => {
+          const unread = chatUnreadMap.get(c.chatId) || 0;
+          const latest = latestUserMessageMap.get(c.chatId);
+          if (latest) {
+            // Only replace preview if the notification is newer than what we have
+            const existingTime = c.lastMessageTime?.toDate?.()?.getTime?.() || 0;
+            const latestTime = latest.createdAt?.toDate?.()?.getTime?.() || 0;
+            if (latestTime >= existingTime) {
+              return { ...c, unreadCount: unread, lastMessage: latest.message, lastMessageTime: latest.createdAt };
+            }
+          }
+          return { ...c, unreadCount: unread };
+        });
+        // Re-sort by latest time
+        return [...updated].sort((a, b) => {
+          const aTime = a.lastMessageTime?.toDate?.() || new Date(0);
+          const bTime = b.lastMessageTime?.toDate?.() || new Date(0);
+          return bTime.getTime() - aTime.getTime();
+        });
+      });
+      setAdChats((prev) => {
+        const updated = prev.map((c) => {
+          const unread = chatUnreadMap.get(c.chatId) || 0;
+          const latest = latestUserMessageMap.get(c.chatId);
+          if (latest) {
+            const existingTime = c.lastMessageTime?.toDate?.()?.getTime?.() || 0;
+            const latestTime = latest.createdAt?.toDate?.()?.getTime?.() || 0;
+            if (latestTime >= existingTime) {
+              return { ...c, unreadCount: unread, lastMessage: latest.message, lastMessageTime: latest.createdAt };
+            }
+          }
+          return { ...c, unreadCount: unread };
+        });
+        return [...updated].sort((a, b) => {
+          const aTime = a.lastMessageTime?.toDate?.() || new Date(0);
+          const bTime = b.lastMessageTime?.toDate?.() || new Date(0);
+          return bTime.getTime() - aTime.getTime();
+        });
+      });
     });
     
     return () => {
@@ -348,6 +405,9 @@ const ChatSystem: React.FC = () => {
       
       // Refresh tab counts after marking as read
       fetchTabCounts();
+      // Optimistically clear unread badge for this chat in UI
+      setGeneralChats((prev) => prev.map((c) => (c.chatId === chatId ? { ...c, unreadCount: 0 } : c)));
+      setAdChats((prev) => prev.map((c) => (c.chatId === chatId ? { ...c, unreadCount: 0 } : c)));
       
       // Simplified query to avoid index requirement
       const messagesQuery = query(
