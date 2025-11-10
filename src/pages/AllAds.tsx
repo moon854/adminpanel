@@ -115,7 +115,7 @@ const AllAds: React.FC = () => {
       
       console.log('Processed ads:', adsData.length);
       
-      // Client side mein sort karein
+      // Sort on client side
       adsData.sort((a, b) => {
         const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;

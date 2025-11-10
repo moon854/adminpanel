@@ -74,7 +74,7 @@ const AdManagement: React.FC = () => {
       const adsData: Ad[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        // Sirf pending ads show karein
+        // Show only pending ads
         if (data.status === 'pending' || !data.status) {
           adsData.push({
             id: doc.id,

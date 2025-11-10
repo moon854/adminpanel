@@ -74,7 +74,7 @@ const ApprovedAds: React.FC = () => {
       
       const adsRef = collection(db, 'machinery');
       
-      // Pehle sirf status filter karein (index ki zarurat nahi)
+      // First filter by status only (no index needed)
       const q = query(adsRef, where('status', '==', 'approved'));
       const querySnapshot = await getDocs(q);
       
@@ -113,7 +113,7 @@ const ApprovedAds: React.FC = () => {
       
       console.log('Processed ads:', adsData.length);
       
-      // Client side mein sort karein
+      // Sort on client side
       adsData.sort((a, b) => {
         const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;

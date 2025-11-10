@@ -23,7 +23,7 @@ import {
   Chat as ChatIcon
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridActionsCellItem } from '@mui/x-data-grid';
-import { collection, query, getDocs, doc, updateDoc, deleteDoc, orderBy, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, getDocs, doc, updateDoc, deleteDoc, orderBy, where, addDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useNavigate } from 'react-router-dom';
 import { notifyUserAdminReply } from '../helpers/chatNotifications';
@@ -51,10 +51,53 @@ const UserManagement: React.FC = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showUnverifiedOnly, setShowUnverifiedOnly] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchUsers();
+    setLoading(true);
+    
+    // Set up real-time listener for users collection to automatically update when verification status changes
+    // This will automatically show verified users when they verify their email via Firebase Auth
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, orderBy('createdAt', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const usersData: User[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        usersData.push({
+          id: doc.id,
+          firstName: data.firstName || 'Unknown',
+          lastName: data.lastName || '',
+          email: data.email || 'No Email',
+          phone: data.phone || 'No Phone',
+          address: data.address || 'No Address',
+          cnic: data.cnic || 'No CNIC',
+          company: data.company || 'No Company',
+          role: data.role || 'user',
+          // Check both isVerified and emailVerified fields for compatibility
+          // If user verified email in Firebase Auth, it will be synced to Firestore and show here automatically
+          isVerified: data.isVerified === true || data.emailVerified === true || false,
+          isBlocked: data.isBlocked || false,
+          createdAt: data.createdAt,
+          lastLoginAt: data.lastLoginAt
+        });
+      });
+      
+      setUsers(usersData);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error in real-time listener:', error);
+      setError('Failed to load users. Please refresh the page.');
+      setLoading(false);
+      // Fallback to regular fetch if real-time fails
+      fetchUsers();
+    });
+    
+    // Cleanup listener on unmount
+    return () => unsubscribe();
   }, []);
 
   const fetchUsers = async () => {
@@ -77,7 +120,8 @@ const UserManagement: React.FC = () => {
           cnic: data.cnic || 'No CNIC',
           company: data.company || 'No Company',
           role: data.role || 'user',
-          isVerified: data.isVerified || false,
+          // Check both isVerified and emailVerified fields for compatibility
+          isVerified: data.isVerified === true || data.emailVerified === true || false,
           isBlocked: data.isBlocked || false,
           createdAt: data.createdAt,
           lastLoginAt: data.lastLoginAt
@@ -138,9 +182,20 @@ const UserManagement: React.FC = () => {
   const handleVerifyUser = async (userId: string) => {
     try {
       setActionLoading(true);
+      setError(null);
+      setSuccessMessage(null);
+      
+      const user = users.find(u => u.id === userId);
+      if (!user) {
+        setError('User not found');
+        return;
+      }
+
       await updateDoc(doc(db, 'users', userId), {
         isVerified: true,
-        verifiedAt: new Date()
+        verifiedAt: new Date(),
+        verifiedBy: 'admin',
+        emailVerified: true // Also set this for consistency
       });
       
       // Update local state
@@ -148,9 +203,14 @@ const UserManagement: React.FC = () => {
         user.id === userId ? { ...user, isVerified: true } : user
       ));
       
+      setSuccessMessage(`User ${user.email} has been verified successfully! They can now login to the app immediately.`);
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccessMessage(null), 5000);
+      
     } catch (error) {
       console.error('Error verifying user:', error);
-      setError('Failed to verify user');
+      setError('Failed to verify user. Please try again.');
     } finally {
       setActionLoading(false);
     }
@@ -247,7 +307,24 @@ const UserManagement: React.FC = () => {
   const columns: GridColDef[] = [
     { field: 'firstName', headerName: 'First Name', width: 150 },
     { field: 'lastName', headerName: 'Last Name', width: 150 },
-    { field: 'email', headerName: 'Email', width: 200 },
+    { 
+      field: 'email', 
+      headerName: 'Email', 
+      width: 200,
+      renderCell: (params) => (
+        <Box>
+          <Typography variant="body2">{params.value}</Typography>
+          {!params.row.isVerified && (
+            <Chip 
+              label="Unverified" 
+              color="warning" 
+              size="small" 
+              sx={{ mt: 0.5, fontSize: '0.7rem', height: '20px' }}
+            />
+          )}
+        </Box>
+      )
+    },
     { field: 'phone', headerName: 'Phone', width: 150 },
     { field: 'role', headerName: 'Role', width: 100 },
     { 
@@ -311,8 +388,12 @@ const UserManagement: React.FC = () => {
             actions.push(
               <GridActionsCellItem
                 icon={<CheckCircleIcon />}
-                label="Verify"
-                onClick={() => handleVerifyUser(params.row.id)}
+                label="Verify User (Allow Login)"
+                onClick={() => {
+                  if (window.confirm(`Are you sure you want to verify user ${params.row.email}? This will allow them to login immediately.`)) {
+                    handleVerifyUser(params.row.id);
+                  }
+                }}
                 disabled={actionLoading}
               />
             );
@@ -344,19 +425,40 @@ const UserManagement: React.FC = () => {
 
   return (
     <Box p={3}>
-      <Typography variant="h4" gutterBottom>
-        User Management
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h4">
+          User Management
+        </Typography>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Typography variant="body2" color="text.secondary">
+            Unverified Users: {users.filter(u => !u.isVerified && u.role !== 'admin').length}
+          </Typography>
+          <Button
+            variant={showUnverifiedOnly ? "contained" : "outlined"}
+            size="small"
+            onClick={() => setShowUnverifiedOnly(!showUnverifiedOnly)}
+            sx={{ backgroundColor: showUnverifiedOnly ? '#ff9800' : 'transparent' }}
+          >
+            {showUnverifiedOnly ? 'Show All Users' : 'Show Unverified Only'}
+          </Button>
+        </Box>
+      </Box>
       
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
+        </Alert>
+      )}
+
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage(null)}>
+          {successMessage}
         </Alert>
       )}
 
       <Paper sx={{ height: 600, width: '100%' }}>
         <DataGrid
-          rows={users}
+          rows={showUnverifiedOnly ? users.filter(u => !u.isVerified && u.role !== 'admin') : users}
           columns={columns}
           initialState={{
             pagination: {
@@ -365,6 +467,12 @@ const UserManagement: React.FC = () => {
           }}
           pageSizeOptions={[10, 25, 50]}
           disableRowSelectionOnClick
+          filterMode="client"
+          sx={{
+            '& .MuiDataGrid-toolbarContainer': {
+              padding: '10px',
+            },
+          }}
         />
       </Paper>
 
