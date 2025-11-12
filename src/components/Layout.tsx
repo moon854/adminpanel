@@ -30,7 +30,8 @@ import {
   AccountCircle,
   Logout,
   CardMembership as PublishersIcon,
-  LocalShipping as RentIcon
+  LocalShipping as RentIcon,
+  Category as CategoryIcon
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { collection, query, getDocs, where, orderBy, onSnapshot } from 'firebase/firestore';
@@ -49,6 +50,7 @@ const menuItems = [
   { text: 'Request Management', icon: <RequestIcon />, path: '/requests' },
   { text: 'Chat System', icon: <ChatIcon />, path: '/chat' },
   { text: 'User Management', icon: <PeopleIcon />, path: '/users' },
+  { text: 'Categories', icon: <CategoryIcon />, path: '/categories' },
   { text: 'Notifications', icon: <NotificationsIcon />, path: '/notifications' },
 ];
 

@@ -17,6 +17,7 @@ const RentRequests = React.lazy(() => import('./pages/RentRequests'));
 const RequestManagement = React.lazy(() => import('./pages/RequestManagement'));
 const ChatSystem = React.lazy(() => import('./pages/ChatSystem'));
 const UserManagement = React.lazy(() => import('./pages/UserManagement'));
+const CategoryManagement = React.lazy(() => import('./pages/CategoryManagement'));
 const AdminNotifications = React.lazy(() => import('./pages/AdminNotifications'));
 const CreateAdmin = React.lazy(() => import('./pages/CreateAdmin'));
 
@@ -97,6 +98,11 @@ function App() {
                   <Route path="users" element={
                     <Suspense fallback={<div>Loading...</div>}>
                       <UserManagement />
+                    </Suspense>
+                  } />
+                  <Route path="categories" element={
+                    <Suspense fallback={<div>Loading...</div>}>
+                      <CategoryManagement />
                     </Suspense>
                   } />
                   <Route path="notifications" element={
