@@ -67,6 +67,7 @@ interface RentalRequest {
   requestedAt: any;
   approvedAt: any;
   approvedBy?: string;
+  adminSeen?: boolean;
 }
 
 const RequestManagement: React.FC = () => {
@@ -269,9 +270,27 @@ const RequestManagement: React.FC = () => {
     }
   };
 
-  const handleViewRequest = (request: RentalRequest) => {
+  const handleViewRequest = async (request: RentalRequest) => {
     setSelectedRequest(request);
     setDialogOpen(true);
+
+    // Mark request as seen by admin (for sidebar badge count)
+    try {
+      if (!request.adminSeen) {
+        await updateDoc(doc(db, 'rentRequests', request.id), {
+          adminSeen: true,
+        });
+
+        // Update local state so UI stays in sync
+        setRequests(prev =>
+          prev.map(r =>
+            r.id === request.id ? { ...r, adminSeen: true } : r
+          )
+        );
+      }
+    } catch (err) {
+      console.error('Error marking request as seen:', err);
+    }
   };
 
   const getStatusColor = (status: string) => {

@@ -59,6 +59,7 @@ const Layout: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [pendingRentRequestCount, setPendingRentRequestCount] = useState(0);
   const { adminUser, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -99,6 +100,24 @@ const Layout: React.FC = () => {
     const unsubscribeChatNotifications = onSnapshot(chatNotificationsQuery, (snapshot) => {
       setUnreadChatCount(snapshot.size);
     });
+
+    // Real-time listener for pending rent requests that are not yet seen by admin
+    const rentRequestsQuery = query(
+      collection(db, 'rentRequests'),
+      where('status', '==', 'pending')
+    );
+
+    const unsubscribeRentRequests = onSnapshot(rentRequestsQuery, (snapshot) => {
+      let pendingUnseen = 0;
+      snapshot.forEach((doc) => {
+        const data = doc.data() as any;
+        // Count only those pending requests which admin has not opened yet
+        if (!data.adminSeen) {
+          pendingUnseen++;
+        }
+      });
+      setPendingRentRequestCount(pendingUnseen);
+    });
     
     // Refresh every 60 seconds instead of 30 for better performance
     const interval = setInterval(() => {
@@ -109,6 +128,7 @@ const Layout: React.FC = () => {
     return () => {
       clearInterval(interval);
       unsubscribeChatNotifications();
+      unsubscribeRentRequests();
     };
   }, [fetchUnreadCount, fetchUnreadChatCount]);
 
@@ -170,6 +190,10 @@ const Layout: React.FC = () => {
                   <Badge badgeContent={unreadChatCount} color="error">
                     {item.icon}
                   </Badge>
+                ) : item.text === 'Rent Requests' ? (
+                  <Badge badgeContent={pendingRentRequestCount} color="error">
+                    {item.icon}
+                  </Badge>
                 ) : (
                   item.icon
                 )}
@@ -180,7 +204,7 @@ const Layout: React.FC = () => {
         ))}
       </List>
     </div>
-  ), [location.pathname, navigate, unreadCount, unreadChatCount]);
+  ), [location.pathname, navigate, unreadCount, unreadChatCount, pendingRentRequestCount]);
 
   return (
     <Box sx={{ display: 'flex' }}>

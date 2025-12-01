@@ -265,7 +265,7 @@ const CategoryManagement: React.FC = () => {
           <TableContainer>
             <Table>
               <TableHead>
-                <TableRow>
+                  <TableRow>
                   <TableCell><strong>Order</strong></TableCell>
                   <TableCell><strong>Category Name</strong></TableCell>
                   <TableCell><strong>Actions</strong></TableCell>
