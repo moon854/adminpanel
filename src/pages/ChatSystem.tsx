@@ -85,6 +85,117 @@ const ChatSystem: React.FC = () => {
     fetchChats();
     fetchTabCounts();
     
+    // Set up real-time listener for chat messages to detect new chats
+    // IMPORTANT: no orderBy here to avoid index/createdAt-missing issues; we sort client-side when needed
+    const messagesQuery = query(collection(db, 'chatMessages'));
+    
+    const unsubscribeMessages = onSnapshot(messagesQuery, async (snapshot) => {
+      // When new messages arrive, check if we need to add new chats
+      const newChats: { chatId: string; userId: string; lastMessage: string; lastMessageTime: any; machineryDetails?: any }[] = [];
+      
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          const chatId = data.chatId || '';
+          
+          // Check for new general support chats
+          if ((chatId.startsWith('general_') || chatId.startsWith('admin_initiated_')) && !chatId.startsWith('machinery_')) {
+            let userId = data.senderId;
+            if (chatId.startsWith('general_')) {
+              userId = chatId.replace('general_', '');
+            } else if (chatId.startsWith('admin_initiated_')) {
+              const parts = chatId.split('_');
+              if (parts.length >= 3) {
+                userId = parts[2];
+              }
+            }
+            
+            // Always check - we'll filter duplicates when adding
+            newChats.push({
+              chatId,
+              userId,
+              lastMessage: data.message,
+              lastMessageTime: data.createdAt
+            });
+          }
+          
+          // Check for new machinery chats
+          if (chatId.startsWith('machinery_') && data.machineryDetails) {
+            const parts = chatId.split('_');
+            let userId = data.senderId;
+            if (parts.length >= 3) {
+              userId = parts[parts.length - 1];
+            }
+            
+            // Always check - we'll filter duplicates when adding
+            if (!newChats.find(c => c.chatId === chatId)) {
+              newChats.push({
+                chatId,
+                userId,
+                lastMessage: data.message,
+                lastMessageTime: data.createdAt,
+                machineryDetails: data.machineryDetails
+              });
+            }
+          }
+        }
+      });
+      
+      // If new chats found, fetch user data and add them
+      if (newChats.length > 0) {
+        for (const newChat of newChats) {
+          try {
+            const userDoc = await getDocs(query(collection(db, 'users'), where('uid', '==', newChat.userId)));
+            let userEmail = 'unknown@email.com';
+            let displayName = 'User';
+            
+            if (!userDoc.empty) {
+              const userData = userDoc.docs[0].data();
+              userEmail = userData.email || userEmail;
+              displayName = `${userData.firstName || ''} ${userData.lastName || ''}`.trim() || userData.email || 'User';
+            }
+            
+            const chatToAdd: Chat = {
+              id: newChat.chatId,
+              chatId: newChat.chatId,
+              userId: newChat.userId,
+              userName: displayName,
+              userEmail,
+              lastMessage: newChat.lastMessage || 'No messages yet',
+              lastMessageTime: newChat.lastMessageTime,
+              unreadCount: 0,
+              status: 'active',
+              machineryDetails: newChat.machineryDetails
+            };
+            
+            if (newChat.chatId.startsWith('machinery_')) {
+              setAdChats(prev => {
+                const exists = prev.find(c => c.chatId === newChat.chatId);
+                if (exists) return prev;
+                return [...prev, chatToAdd].sort((a, b) => {
+                  const aTime = a.lastMessageTime?.toDate?.() || new Date(0);
+                  const bTime = b.lastMessageTime?.toDate?.() || new Date(0);
+                  return bTime.getTime() - aTime.getTime();
+                });
+              });
+            } else {
+              setGeneralChats(prev => {
+                const exists = prev.find(c => c.chatId === newChat.chatId);
+                if (exists) return prev;
+                return [...prev, chatToAdd].sort((a, b) => {
+                  const aTime = a.lastMessageTime?.toDate?.() || new Date(0);
+                  const bTime = b.lastMessageTime?.toDate?.() || new Date(0);
+                  return bTime.getTime() - aTime.getTime();
+                });
+              });
+            }
+          } catch (error) {
+            console.error('Error adding new chat:', error);
+          }
+        }
+      }
+    });
+    
     // Set up real-time listener for chat notifications
     const chatNotificationsQuery = query(
       collection(db, 'adminNotifications'),
@@ -170,6 +281,7 @@ const ChatSystem: React.FC = () => {
     });
     
     return () => {
+      unsubscribeMessages();
       unsubscribeChatNotifications();
     };
   }, []);
@@ -197,11 +309,8 @@ const ChatSystem: React.FC = () => {
     try {
       setLoading(true);
       
-      // Get ALL messages once
-      const messagesQuery = query(
-        collection(db, 'chatMessages'), 
-        orderBy('createdAt', 'desc')
-      );
+      // Get ALL messages once (no orderBy to avoid index issues)
+      const messagesQuery = query(collection(db, 'chatMessages'));
       const allMessagesSnapshot = await getDocs(messagesQuery);
       
       const generalChatMap = new Map<string, any>();
@@ -672,7 +781,7 @@ const ChatSystem: React.FC = () => {
                     <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                       <ConstructionIcon fontSize="small" color="primary" />
                       <Typography variant="caption" color="textSecondary">
-                        {selectedChat.machineryDetails.category} • ₹{selectedChat.machineryDetails.price}/day
+                        {selectedChat.machineryDetails.category} • Rs. {selectedChat.machineryDetails.price} (PKR)/day
                       </Typography>
                     </Box>
                   )}
@@ -720,7 +829,7 @@ const ChatSystem: React.FC = () => {
                                   <strong>Category:</strong> {message.machineryDetails.category}
                                 </Typography>
                                 <Typography variant="body2">
-                                  <strong>Price:</strong> ₹{message.machineryDetails.price}/day
+                                  <strong>Price:</strong> Rs. {message.machineryDetails.price} (PKR)/day
                                 </Typography>
                                 <Typography variant="body2">
                                   <strong>Location:</strong> {message.machineryDetails.location}

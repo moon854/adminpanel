@@ -373,7 +373,7 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={4}>
           <StatCard
             title="Total Revenue (Approved Advances)"
-            value={`₹${stats.totalRevenue.toLocaleString()}`}
+            value={`Rs. ${stats.totalRevenue.toLocaleString()} (PKR)`}
             icon={<MoneyIcon sx={{ fontSize: 40 }} />}
             color="success.main"
           />
@@ -381,7 +381,7 @@ const Dashboard: React.FC = () => {
         <Grid item xs={12} sm={6} md={4}>
           <StatCard
             title="Completed Rentals Revenue"
-            value={`₹${(stats.completedRentalsRevenue || 0).toLocaleString()}`}
+            value={`Rs. ${(stats.completedRentalsRevenue || 0).toLocaleString()} (PKR)`}
             icon={<MoneyIcon sx={{ fontSize: 40 }} />}
             color="success.main"
           />

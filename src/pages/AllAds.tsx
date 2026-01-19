@@ -55,6 +55,9 @@ interface Ad {
   status: 'pending' | 'approved' | 'rejected';
   createdAt: any;
   userId: string;
+  originalPrice?: string;
+  adminPrice?: string;
+  commission?: string;
 }
 
 const AllAds: React.FC = () => {
@@ -67,6 +70,9 @@ const AllAds: React.FC = () => {
   const [editingPrice, setEditingPrice] = useState<string>('');
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [migrating, setMigrating] = useState(false);
+  const [migrationDialogOpen, setMigrationDialogOpen] = useState(false);
+  const [commissionPercentage, setCommissionPercentage] = useState<string>('20');
 
   useEffect(() => {
     fetchAllAds();
@@ -137,10 +143,23 @@ const AllAds: React.FC = () => {
       setActionLoading(true);
       const ad = ads.find(ad => ad.id === adId);
 
-      await updateDoc(doc(db, 'machinery', adId), {
+      const updateData: any = {
         status: 'approved',
         approvedAt: new Date()
-      });
+      };
+      
+      // Store originalPrice if not already stored (when ad is first approved)
+      if (ad && !ad.originalPrice) {
+        updateData.originalPrice = ad.price;
+        // If admin has already updated price, calculate commission
+        if (ad.adminPrice && parseFloat(ad.adminPrice) > parseFloat(ad.price || '0')) {
+          const commission = parseFloat(ad.adminPrice) - parseFloat(ad.price || '0');
+          updateData.commission = commission;
+          updateData.price = ad.adminPrice;
+        }
+      }
+
+      await updateDoc(doc(db, 'machinery', adId), updateData);
 
       // Update local state
       setAds(ads.map(ad =>
@@ -194,12 +213,26 @@ const AllAds: React.FC = () => {
 
     try {
       setActionLoading(true);
-      await updateDoc(doc(db, 'machinery', selectedAd.id), {
+      // Store original price if not already stored (first time admin updates)
+      const updateData: any = {
         price: editingPrice,
         adminPrice: editingPrice,
         priceUpdatedAt: new Date(),
         priceUpdatedBy: 'admin'
-      });
+      };
+      
+      // If originalPrice doesn't exist, store the current price as original
+      if (!selectedAd.originalPrice) {
+        updateData.originalPrice = selectedAd.price;
+      }
+      
+      // Calculate commission
+      const originalPrice = parseFloat(selectedAd.originalPrice || selectedAd.price || '0');
+      const newPrice = parseFloat(editingPrice);
+      const commission = newPrice - originalPrice;
+      updateData.commission = commission > 0 ? commission : 0;
+      
+      await updateDoc(doc(db, 'machinery', selectedAd.id), updateData);
 
       // Update local state
       setAds(ads.map(ad =>
@@ -219,6 +252,62 @@ const AllAds: React.FC = () => {
   const handleCancelEditPrice = () => {
     setEditingPrice(selectedAd?.price || '');
     setIsEditingPrice(false);
+  };
+
+  const handleMigrateExistingAds = async () => {
+    if (!window.confirm(`This will update all approved ads without originalPrice. Commission percentage: ${commissionPercentage}%. Continue?`)) {
+      return;
+    }
+
+    try {
+      setMigrating(true);
+      setError(null);
+      
+      const adsRef = collection(db, 'machinery');
+      const querySnapshot = await getDocs(adsRef);
+      
+      let updatedCount = 0;
+      const commissionPercent = parseFloat(commissionPercentage) / 100;
+      
+      for (const docSnapshot of querySnapshot.docs) {
+        const ad = docSnapshot.data();
+        const adId = docSnapshot.id;
+        
+        // Only process approved ads without originalPrice
+        if (ad.status === 'approved' && !ad.originalPrice && ad.price) {
+          const currentPrice = parseFloat(ad.price || '0');
+          
+          if (currentPrice > 0) {
+            // Calculate original price based on commission percentage
+            // If current price includes commission: originalPrice = currentPrice / (1 + commissionPercent)
+            // Example: If currentPrice = 6000 and commission = 20%, then originalPrice = 6000 / 1.20 = 5000
+            const originalPrice = currentPrice / (1 + commissionPercent);
+            const commission = currentPrice - originalPrice;
+            
+            await updateDoc(doc(db, 'machinery', adId), {
+              originalPrice: originalPrice.toFixed(2),
+              commission: commission.toFixed(2),
+              migratedAt: new Date(),
+              migrationCommissionPercent: commissionPercentage
+            });
+            
+            updatedCount++;
+            console.log(`Updated ad ${adId}: ${ad.name || 'Unknown'}, Original: ${originalPrice.toFixed(2)}, Commission: ${commission.toFixed(2)}`);
+          }
+        }
+      }
+      
+      setMigrationDialogOpen(false);
+      alert(`Migration completed! Updated ${updatedCount} ads.`);
+      
+      // Refresh ads list
+      fetchAllAds();
+    } catch (error) {
+      console.error('Error migrating ads:', error);
+      setError(`Failed to migrate ads: ${error}`);
+    } finally {
+      setMigrating(false);
+    }
   };
 
   const handleDeleteAd = async (adId: string) => {
@@ -259,7 +348,7 @@ const AllAds: React.FC = () => {
   const columns: GridColDef[] = [
     { field: 'name', headerName: 'Ad Name', width: 200 },
     { field: 'categoryName', headerName: 'Category', width: 150 },
-    { field: 'price', headerName: 'Price/Day', width: 120, renderCell: (params) => `₹${params.value}` },
+    { field: 'price', headerName: 'Price/Day', width: 140, renderCell: (params) => `Rs. ${params.value} (PKR)` },
     { field: 'ownerName', headerName: 'Owner', width: 150 },
     { field: 'location', headerName: 'Location', width: 150 },
     {
@@ -359,19 +448,30 @@ const AllAds: React.FC = () => {
           All Ads Management
         </Typography>
         
-        <FormControl size="small" sx={{ minWidth: 120 }}>
-          <InputLabel>Filter by Status</InputLabel>
-          <Select
-            value={statusFilter}
-            label="Filter by Status"
-            onChange={(e) => setStatusFilter(e.target.value)}
+        <Box display="flex" gap={2} alignItems="center">
+          <Button
+            variant="outlined"
+            color="secondary"
+            onClick={() => setMigrationDialogOpen(true)}
+            disabled={migrating}
           >
-            <MenuItem value="all">All Ads</MenuItem>
-            <MenuItem value="pending">Pending</MenuItem>
-            <MenuItem value="approved">Approved</MenuItem>
-            <MenuItem value="rejected">Rejected</MenuItem>
-          </Select>
-        </FormControl>
+            {migrating ? 'Migrating...' : 'Migrate Existing Ads'}
+          </Button>
+          
+          <FormControl size="small" sx={{ minWidth: 120 }}>
+            <InputLabel>Filter by Status</InputLabel>
+            <Select
+              value={statusFilter}
+              label="Filter by Status"
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <MenuItem value="all">All Ads</MenuItem>
+              <MenuItem value="pending">Pending</MenuItem>
+              <MenuItem value="approved">Approved</MenuItem>
+              <MenuItem value="rejected">Rejected</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
       </Box>
 
       <Paper sx={{ height: 600, width: '100%' }}>
@@ -404,7 +504,7 @@ const AllAds: React.FC = () => {
                   </Typography>
                   <Box display="flex" alignItems="center" gap={1}>
                     <Typography variant="h6" color="primary" gutterBottom>
-                      ₹{selectedAd.price}/day
+                      Rs. {selectedAd.price} (PKR)/day
                     </Typography>
                     {(selectedAd.status === 'pending' || selectedAd.status === 'approved') && (
                       <Button
@@ -515,6 +615,37 @@ const AllAds: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDialogOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Migration Dialog */}
+      <Dialog open={migrationDialogOpen} onClose={() => setMigrationDialogOpen(false)}>
+        <DialogTitle>Migrate Existing Ads</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            This will update all approved ads that don't have originalPrice set.
+            It will calculate originalPrice and commission based on the commission percentage.
+          </Alert>
+          <TextField
+            label="Commission Percentage (%)"
+            type="number"
+            value={commissionPercentage}
+            onChange={(e) => setCommissionPercentage(e.target.value)}
+            fullWidth
+            sx={{ mt: 2 }}
+            helperText="Example: If current price is 6000 and commission is 20%, original price will be 5000 and commission will be 1000"
+          />
+          <Typography variant="body2" color="textSecondary" sx={{ mt: 2 }}>
+            Formula: Original Price = Current Price ÷ (1 + Commission%)
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMigrationDialogOpen(false)} disabled={migrating}>
+            Cancel
+          </Button>
+          <Button onClick={handleMigrateExistingAds} variant="contained" disabled={migrating}>
+            {migrating ? 'Migrating...' : 'Start Migration'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

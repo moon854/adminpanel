@@ -293,11 +293,125 @@ const RequestManagement: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
+  // Utility function to parse dates from various formats
+  const parseDate = (dateStr: string): Date | null => {
+    if (!dateStr) return null;
+    
+    try {
+      const str = dateStr.toString().trim();
+      let startDate: Date | null = null;
+      
+      // Format 1: DD/MM/YYYY or DD-MM-YYYY
+      if (str.includes('/') || str.includes('-')) {
+        const dateParts = str.split(/[/-]/);
+        if (dateParts.length === 3) {
+          const day = parseInt(dateParts[0]);
+          const month = parseInt(dateParts[1]) - 1; // Month is 0-indexed
+          const year = parseInt(dateParts[2]);
+          
+          if (!isNaN(day) && !isNaN(month) && !isNaN(year) && 
+              day >= 1 && day <= 31 && month >= 0 && month <= 11 && year >= 2020) {
+            startDate = new Date(year, month, day);
+          }
+        }
+      }
+      
+      // Format 2: MM/DD/YYYY (American format)
+      if (!startDate && str.includes('/')) {
+        const dateParts = str.split('/');
+        if (dateParts.length === 3) {
+          const month = parseInt(dateParts[0]) - 1;
+          const day = parseInt(dateParts[1]);
+          const year = parseInt(dateParts[2]);
+          
+          if (!isNaN(day) && !isNaN(month) && !isNaN(year) && 
+              day >= 1 && day <= 31 && month >= 0 && month <= 11 && year >= 2020) {
+            startDate = new Date(year, month, day);
+          }
+        }
+      }
+      
+      // Format 3: YYYY-MM-DD
+      if (!startDate && str.includes('-')) {
+        const dateParts = str.split('-');
+        if (dateParts.length === 3 && dateParts[0].length === 4) {
+          const year = parseInt(dateParts[0]);
+          const month = parseInt(dateParts[1]) - 1;
+          const day = parseInt(dateParts[2]);
+          
+          if (!isNaN(day) && !isNaN(month) && !isNaN(year) && 
+              day >= 1 && day <= 31 && month >= 0 && month <= 11 && year >= 2020) {
+            startDate = new Date(year, month, day);
+          }
+        }
+      }
+      
+      if (startDate && !isNaN(startDate.getTime())) {
+        return startDate;
+      }
+    } catch (error) {
+      console.error('Date parse error:', error);
+    }
+    
+    return null;
+  };
+
+  // Function to get actual rental status based on dates
+  const getActualStatus = (request: RentalRequest): string => {
+    const status = request.status;
+    
+    // If not approved, return the original status
+    if (status !== 'approved') {
+      return status;
+    }
+    
+    // For approved requests, check if rental period has ended
+    if (request.rentalStartDate && request.numberOfDays) {
+      const startDate = parseDate(request.rentalStartDate);
+      
+      if (startDate) {
+        const endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + (parseInt(request.numberOfDays.toString()) - 1));
+        
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        endDate.setHours(0, 0, 0, 0);
+        
+        // If today >= end date, rental is completed
+        const daysDiff = (today.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24);
+        
+        if (today >= endDate || daysDiff > 0) {
+          return 'completed';
+        } else {
+          return 'active';
+        }
+      }
+    }
+    
+    // Default to completed if date calculation fails (for old rentals)
+    return 'completed';
+  };
+
+  const getStatusColor = (request: RentalRequest) => {
+    const actualStatus = getActualStatus(request);
+    switch (actualStatus) {
+      case 'active': return 'success';
+      case 'completed': return 'default';
       case 'approved': return 'success';
       case 'rejected': return 'error';
       default: return 'warning';
+    }
+  };
+
+  const getStatusLabel = (request: RentalRequest) => {
+    const actualStatus = getActualStatus(request);
+    switch (actualStatus) {
+      case 'active': return 'Active';
+      case 'completed': return 'Completed';
+      case 'approved': return 'Active';
+      case 'rejected': return 'Rejected';
+      case 'pending': return 'Pending';
+      default: return (request.status?.toString() || 'Unknown').toUpperCase();
     }
   };
 
@@ -309,19 +423,37 @@ const RequestManagement: React.FC = () => {
       field: 'advancePayment', 
       headerName: 'Advance Payment', 
       width: 150,
-      renderCell: (params) => `Rs. ${params.value?.toLocaleString() || 0}`
+      renderCell: (params) => `Rs. ${params.value?.toLocaleString() || 0} (PKR)`
+    },
+    { 
+      field: 'endDate', 
+      headerName: 'End Date', 
+      width: 120,
+      renderCell: (params) => {
+        if (params.row.rentalStartDate && params.row.numberOfDays) {
+          const startDate = parseDate(params.row.rentalStartDate);
+          if (startDate) {
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + (parseInt(params.row.numberOfDays.toString()) - 1));
+            return endDate.toLocaleDateString('en-GB');
+          }
+        }
+        return 'N/A';
+      }
     },
     { 
       field: 'status', 
       headerName: 'Status', 
       width: 120,
-      renderCell: (params) => (
-        <Chip 
-          label={params.value?.toUpperCase()} 
-          color={getStatusColor(params.value) as any}
-          size="small"
-        />
-      )
+      renderCell: (params) => {
+        return (
+          <Chip 
+            label={getStatusLabel(params.row)} 
+            color={getStatusColor(params.row) as any}
+            size="small"
+          />
+        );
+      }
     },
     {
       field: 'actions',
@@ -548,19 +680,19 @@ const RequestManagement: React.FC = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">Total Rent:</Typography>
-                  <Typography variant="body1" fontWeight="600">Rs. {selectedRequest.totalRent?.toLocaleString()}</Typography>
+                  <Typography variant="body1" fontWeight="600">Rs. {selectedRequest.totalRent?.toLocaleString()} (PKR)</Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">Security Deposit:</Typography>
-                  <Typography variant="body1" fontWeight="600">Rs. {selectedRequest.securityDeposit?.toLocaleString()}</Typography>
+                  <Typography variant="body1" fontWeight="600">Rs. {selectedRequest.securityDeposit?.toLocaleString()} (PKR)</Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">Advance Payment:</Typography>
-                  <Typography variant="body1" fontWeight="600" color="primary">Rs. {selectedRequest.advancePayment?.toLocaleString()}</Typography>
+                  <Typography variant="body1" fontWeight="600" color="primary">Rs. {selectedRequest.advancePayment?.toLocaleString()} (PKR)</Typography>
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="body2" color="textSecondary">Remaining Payment:</Typography>
-                  <Typography variant="body1" fontWeight="600">Rs. {selectedRequest.remainingPayment?.toLocaleString()}</Typography>
+                  <Typography variant="body1" fontWeight="600">Rs. {selectedRequest.remainingPayment?.toLocaleString()} (PKR)</Typography>
                 </Grid>
 
                 {/* Payment Proof */}

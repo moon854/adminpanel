@@ -48,6 +48,9 @@ interface Ad {
   status: 'pending' | 'approved' | 'rejected';
   createdAt: any;
   userId: string;
+  originalPrice?: string;
+  adminPrice?: string;
+  commission?: string;
 }
 
 const AdManagement: React.FC = () => {
@@ -116,17 +119,30 @@ const AdManagement: React.FC = () => {
       setActionLoading(true);
       const ad = ads.find(ad => ad.id === adId);
       
-      await updateDoc(doc(db, 'machinery', adId), {
+      const updateData: any = {
         status: 'approved',
         approvedAt: new Date()
-      });
+      };
+      
+      // Store originalPrice if not already stored (when ad is first approved)
+      if (ad && !ad.originalPrice) {
+        updateData.originalPrice = ad.price;
+        // If admin has already updated price, calculate commission
+        if (ad.adminPrice && parseFloat(ad.adminPrice) > parseFloat(ad.price || '0')) {
+          const commission = parseFloat(ad.adminPrice) - parseFloat(ad.price || '0');
+          updateData.commission = commission;
+          updateData.price = ad.adminPrice;
+        }
+      }
+      
+      await updateDoc(doc(db, 'machinery', adId), updateData);
       
       // Notify user that their ad is approved
       if (ad && ad.userId) {
         await addDoc(collection(db, 'userNotifications'), {
           type: 'ad_approved',
           title: 'Ad Successfully Posted! 🎉',
-          message: `Your ad "${ad.name}" has been approved and is now live! Rent: ₹${ad.price}/day`,
+          message: `Your ad "${ad.name}" has been approved and is now live! Rent: Rs. ${ad.price} (PKR)/day`,
           userId: ad.userId,
           adId: adId,
           adData: {
@@ -207,12 +223,26 @@ const AdManagement: React.FC = () => {
     
     try {
       setActionLoading(true);
-      await updateDoc(doc(db, 'machinery', selectedAd.id), {
+      // Store original price if not already stored (first time admin updates)
+      const updateData: any = {
         price: editingPrice,
         adminPrice: editingPrice,
         priceUpdatedAt: new Date(),
         priceUpdatedBy: 'admin'
-      });
+      };
+      
+      // If originalPrice doesn't exist, store the current price as original
+      if (!selectedAd.originalPrice) {
+        updateData.originalPrice = selectedAd.price;
+      }
+      
+      // Calculate commission
+      const originalPrice = parseFloat(selectedAd.originalPrice || selectedAd.price || '0');
+      const newPrice = parseFloat(editingPrice);
+      const commission = newPrice - originalPrice;
+      updateData.commission = commission > 0 ? commission : 0;
+      
+      await updateDoc(doc(db, 'machinery', selectedAd.id), updateData);
       
       // Update local state
       setAds(ads.map(ad => 
@@ -389,7 +419,7 @@ const AdManagement: React.FC = () => {
                   </Typography>
                   <Box display="flex" alignItems="center" gap={1}>
                     <Typography variant="h6" color="primary" gutterBottom>
-                      ₹{selectedAd.price}/day
+                      Rs. {selectedAd.price} (PKR)/day
                     </Typography>
                     {selectedAd.status === 'pending' && (
                       <Button 

@@ -296,7 +296,7 @@ const AdminNotifications: React.FC = () => {
                     Category: {selectedNotification.adData.category}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Price: ₹{selectedNotification.adData.price}/day
+                    Price: Rs. {selectedNotification.adData.price} (PKR)/day
                   </Typography>
                   {selectedNotification.adData.ownerName && (
                     <Typography variant="body2" color="text.secondary">

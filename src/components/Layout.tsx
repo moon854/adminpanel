@@ -46,7 +46,6 @@ const menuItems = [
   { text: 'Pending Ads', icon: <AssignmentIcon />, path: '/ads' },
   { text: 'Approved Ads', icon: <AssignmentIcon />, path: '/approved-ads' },
   { text: 'Ad Publishers', icon: <PublishersIcon />, path: '/ad-publishers' },
-  { text: 'Rent Requests', icon: <RentIcon />, path: '/rent-requests' },
   { text: 'Request Management', icon: <RequestIcon />, path: '/requests' },
   { text: 'Chat System', icon: <ChatIcon />, path: '/chat' },
   { text: 'User Management', icon: <PeopleIcon />, path: '/users' },
