@@ -28,6 +28,12 @@ import {
   DragIndicator as DragIcon
 } from '@mui/icons-material';
 import {
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
+} from '@mui/material';
+import {
   collection,
   getDocs,
   addDoc,
@@ -44,6 +50,8 @@ interface Category {
   id: string;
   name: string;
   order: number;
+  iconLibrary?: string; // 'Ionicons' | 'MaterialIcons' | 'MaterialCommunityIcons' | 'FontAwesome'
+  iconName?: string; // Icon name from the selected library
   createdAt?: any;
   updatedAt?: any;
 }
@@ -55,6 +63,8 @@ const CategoryManagement: React.FC = () => {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryName, setCategoryName] = useState('');
   const [categoryOrder, setCategoryOrder] = useState(0);
+  const [iconLibrary, setIconLibrary] = useState<string>('MaterialCommunityIcons');
+  const [iconName, setIconName] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -94,9 +104,13 @@ const CategoryManagement: React.FC = () => {
       setEditingCategory(category);
       setCategoryName(category.name);
       setCategoryOrder(category.order || 0);
+      setIconLibrary(category.iconLibrary || 'MaterialCommunityIcons');
+      setIconName(category.iconName || '');
     } else {
       setEditingCategory(null);
       setCategoryName('');
+      setIconLibrary('MaterialCommunityIcons');
+      setIconName('');
       // Auto-set order to last position
       const maxOrder = categories.length > 0 
         ? Math.max(...categories.map(c => c.order || 0)) 
@@ -113,6 +127,8 @@ const CategoryManagement: React.FC = () => {
     setEditingCategory(null);
     setCategoryName('');
     setCategoryOrder(0);
+    setIconLibrary('MaterialCommunityIcons');
+    setIconName('');
     setError(null);
     setSuccess(null);
   };
@@ -120,6 +136,11 @@ const CategoryManagement: React.FC = () => {
   const handleSave = async () => {
     if (!categoryName.trim()) {
       setError('Category name is required');
+      return;
+    }
+
+    if (!iconName.trim()) {
+      setError('Icon name is required. Please select an icon from https://icons.expo.fyi/Index');
       return;
     }
 
@@ -137,20 +158,25 @@ const CategoryManagement: React.FC = () => {
     try {
       setError(null);
       
+      const categoryData: any = {
+        name: categoryName.trim(),
+        order: categoryOrder,
+        iconLibrary: iconLibrary,
+        iconName: iconName.trim()
+      };
+      
       if (editingCategory) {
         // Update existing category
         const categoryRef = doc(db, 'categories', editingCategory.id);
         await updateDoc(categoryRef, {
-          name: categoryName.trim(),
-          order: categoryOrder,
+          ...categoryData,
           updatedAt: serverTimestamp()
         });
         setSuccess('Category updated successfully');
       } else {
         // Add new category
         await addDoc(collection(db, 'categories'), {
-          name: categoryName.trim(),
-          order: categoryOrder,
+          ...categoryData,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
@@ -294,6 +320,19 @@ const CategoryManagement: React.FC = () => {
                       <Typography variant="body1" fontWeight="medium">
                         {category.name}
                       </Typography>
+                      {category.iconLibrary && category.iconName ? (
+                        <Chip 
+                          label={`${category.iconLibrary}/${category.iconName}`} 
+                          size="small" 
+                          sx={{ mt: 0.5 }}
+                          color="primary"
+                          variant="outlined"
+                        />
+                      ) : (
+                        <Typography variant="caption" color="error">
+                          ⚠️ No icon set
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Box display="flex" gap={1}>
@@ -352,6 +391,80 @@ const CategoryManagement: React.FC = () => {
               required
               inputProps={{ min: 1 }}
               helperText="Display order for categories (lower number will be shown first)"
+            />
+            <FormControl fullWidth margin="normal" required>
+              <InputLabel>Icon Library</InputLabel>
+              <Select
+                value={iconLibrary}
+                label="Icon Library"
+                onChange={(e) => setIconLibrary(e.target.value)}
+              >
+                <MenuItem value="Ionicons">Ionicons</MenuItem>
+                <MenuItem value="MaterialIcons">MaterialIcons</MenuItem>
+                <MenuItem value="MaterialCommunityIcons">MaterialCommunityIcons</MenuItem>
+                <MenuItem value="FontAwesome">FontAwesome</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label="Icon Name"
+              value={iconName}
+              onChange={(e) => setIconName(e.target.value.trim())}
+              margin="normal"
+              required
+              placeholder="e.g., excavator, crane, build, home, etc."
+              helperText={
+                <Box>
+                  <Typography variant="caption" display="block" sx={{ mb: 1 }}>
+                    Enter exact icon name from{' '}
+                    <a 
+                      href={`https://icons.expo.fyi/Index`}
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      style={{ color: '#1976d2' }}
+                    >
+                      Expo Icons Directory
+                    </a>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+                    <strong>Common examples by library:</strong>
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" component="div" sx={{ mt: 0.5, pl: 1 }}>
+                    {iconLibrary === 'Ionicons' && (
+                      <span>home, build, business, car, settings, menu, phone, mail, star, heart, etc.</span>
+                    )}
+                    {iconLibrary === 'MaterialIcons' && (
+                      <span>category, build, home, work, settings, construction, directions-car, etc.</span>
+                    )}
+                    {iconLibrary === 'MaterialCommunityIcons' && (
+                      <span>excavator, crane, hammer, wrench, tools, bulldozer, forklift, etc.</span>
+                    )}
+                    {iconLibrary === 'FontAwesome' && (
+                      <span>road, building, truck, gear, home, car, wrench, etc.</span>
+                    )}
+                    {!iconLibrary && <span>Select icon library first</span>}
+                  </Typography>
+                  {iconName && iconLibrary && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: '#e3f2fd', borderRadius: 1, border: '1px solid #90caf9' }}>
+                      <Typography variant="caption" fontWeight="bold" display="block" color="primary">
+                        📋 Icon Configuration:
+                      </Typography>
+                      <Typography variant="caption" display="block" sx={{ mt: 0.5, fontFamily: 'monospace' }}>
+                        Library: <strong>{iconLibrary}</strong>
+                      </Typography>
+                      <Typography variant="caption" display="block" sx={{ fontFamily: 'monospace' }}>
+                        Name: <strong>{iconName}</strong>
+                      </Typography>
+                      <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 1, fontSize: '0.7rem' }}>
+                        ⚠️ Important: Icon name must match <strong>exactly</strong> (case-sensitive) from Expo Icons Directory
+                      </Typography>
+                      <Typography variant="caption" color="error" display="block" sx={{ mt: 0.5, fontSize: '0.7rem' }}>
+                        💡 Tip: Open Expo Icons link above, search for your icon, and copy the exact name
+                      </Typography>
+                    </Box>
+                  )}
+                </Box>
+              }
             />
           </Box>
         </DialogContent>
