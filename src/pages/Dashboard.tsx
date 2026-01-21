@@ -12,7 +12,7 @@ import {
 import {
   Assignment as AssignmentIcon,
   Person as PersonIcon,
-  AttachMoney as MoneyIcon,
+  CurrencyRupee as MoneyIcon,
   TrendingUp as TrendingUpIcon,
   LocalShipping as RentIcon
 } from '@mui/icons-material';
@@ -253,34 +253,56 @@ const Dashboard: React.FC = () => {
   const StatCard = React.memo<{
     title: string;
     value: string | number;
-    icon: React.ReactNode;
+    icon?: React.ReactNode;
     color: string;
     onClick?: () => void;
-  }>(({ title, value, icon, color, onClick }) => (
-    <Card 
-      sx={{ 
-        cursor: onClick ? 'pointer' : 'default',
-        height: { xs: '160px', md: '180px' },
-        transition: 'all 0.2s ease-in-out',
-        '&:hover': onClick ? { 
-          boxShadow: 3,
-          transform: 'translateY(-2px)',
-        } : {}
-      }}
-      onClick={onClick}
-    >
-      <CardContent sx={{ height: '100%' }}>
-        <Box display="flex" alignItems="stretch" justifyContent="space-between" height="100%" gap={2}>
-          <Box flex={1} minWidth={0} display="flex" flexDirection="column" justifyContent="space-between">
+  }>(({ title, value, icon, color, onClick }) => {
+    const hasIcon = !!icon;
+    return (
+      <Card 
+        sx={{ 
+          cursor: onClick ? 'pointer' : 'default',
+          // Smaller + tighter when there's no icon (Revenue cards) to avoid empty space
+          minHeight: hasIcon ? { xs: 160, md: 180 } : { xs: 120, md: 130 },
+          transition: 'all 0.2s ease-in-out',
+          '&:hover': onClick ? { 
+            boxShadow: 3,
+            transform: 'translateY(-2px)',
+          } : {}
+        }}
+        onClick={onClick}
+      >
+        <CardContent sx={{ height: '100%', py: hasIcon ? 2 : 1.5 }}>
+          <Box
+            display="flex"
+            alignItems="center"
+            justifyContent={hasIcon ? 'space-between' : 'center'}
+            height="100%"
+            gap={2}
+          >
+            <Box
+              flex={1}
+              minWidth={0}
+              display="flex"
+              flexDirection="column"
+              justifyContent="center"
+              alignItems={hasIcon ? 'flex-start' : 'center'}
+              textAlign={hasIcon ? 'left' : 'center'}
+            >
             <Typography 
               color="textSecondary" 
               gutterBottom 
               variant="subtitle2"
               sx={{ 
+                fontSize: { xs: '0.8rem', sm: '0.85rem', md: '0.9rem' },
+                lineHeight: 1.25,
+                fontWeight: 600,
                 whiteSpace: 'normal',
                 wordBreak: 'break-word',
-                lineHeight: 1.3,
-                fontWeight: 600
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical'
               }}
             >
               {title}
@@ -301,13 +323,16 @@ const Dashboard: React.FC = () => {
               {value}
             </Typography>
           </Box>
-          <Box color={color} display="flex" alignItems="center">
-            {icon}
-          </Box>
+          {icon ? (
+            <Box color={color} display="flex" alignItems="center">
+              {icon}
+            </Box>
+          ) : null}
         </Box>
       </CardContent>
     </Card>
-  ));
+    );
+  });
 
   if (loading) {
     return (
@@ -374,7 +399,6 @@ const Dashboard: React.FC = () => {
           <StatCard
             title="Total Revenue (Approved Advances)"
             value={`Rs. ${stats.totalRevenue.toLocaleString()} (PKR)`}
-            icon={<MoneyIcon sx={{ fontSize: 40 }} />}
             color="success.main"
           />
         </Grid>
@@ -382,7 +406,6 @@ const Dashboard: React.FC = () => {
           <StatCard
             title="Completed Rentals Revenue"
             value={`Rs. ${(stats.completedRentalsRevenue || 0).toLocaleString()} (PKR)`}
-            icon={<MoneyIcon sx={{ fontSize: 40 }} />}
             color="success.main"
           />
         </Grid>
